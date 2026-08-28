@@ -5,7 +5,7 @@
 1. Start from the latest clean `main` after prerequisite PRs merge.
 2. Create one owner-scoped branch for one coherent change.
 3. Add deterministic tests or evidence for every behavioral claim.
-4. Run `bash scripts/verify-repo.sh`, then complete the remaining mandatory pre-PR local and visual gate below.
+4. Run `bash scripts/verify-repo.sh`, then complete the canonical [Verification Standard](docs/verification-standard.md).
 5. Commit with a descriptive conventional commit message.
 6. Open a pull request and record exact local evidence and scope boundaries.
 7. Self-review the exact head, then obtain at least one non-author review for implementation PRs.
@@ -16,18 +16,7 @@ Direct substantive pushes to `main` are not allowed. The license-only root commi
 
 ## Mandatory pre-PR local and visual gate
 
-Do not open an implementation PR until every applicable item passes on the exact commit that will be pushed:
-
-1. Run the repository's complete verification command, including formatting/lint, typecheck, unit and integration tests, production build, and dependency/security audit.
-2. Start the built application locally using its production-like preview command; a compiler-only result is not a runtime check.
-3. Exercise every affected happy path plus relevant loading, empty, error, cancellation, approval, and recovery states.
-4. Inspect the running result visually with the in-app browser. Use the user's computer/browser when behavior depends on native UI, browser extensions, permissions, an existing signed-in session, or another environment the in-app browser cannot represent.
-5. Check desktop and mobile widths when UI is affected, keyboard interaction when relevant, and browser console/network failures.
-6. Capture the local URL, commands, results, tested flows/viewports, visual evidence, and any explicit untested boundary for the PR description.
-
-If any required command, build, local run, or visual check fails, fix it and repeat the entire gate before opening the PR. CI confirms the pushed head; it does not replace pre-PR local execution or visual inspection.
-
-Documentation-only changes may mark runtime and visual checks not applicable, but the PR must explain why and must still run the repository documentation gate.
+The [Verification Standard](docs/verification-standard.md) is the single canonical definition of this gate, including its documentation-only exception. Do not open an implementation PR until every applicable requirement passes on the exact proposed head. CI does not replace pre-PR local execution or visual inspection.
 
 ## Branch ownership
 
