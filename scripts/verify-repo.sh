@@ -3,6 +3,12 @@ set -euo pipefail
 
 git diff --check
 
+if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+  git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
+else
+  git show --check --format= HEAD
+fi
+
 required_files=(
   LICENSE
   README.md
