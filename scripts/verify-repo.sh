@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-git diff --check
+git diff --check HEAD
 
 if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
   git diff --check "origin/${GITHUB_BASE_REF}...HEAD"

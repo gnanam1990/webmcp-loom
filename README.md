@@ -6,7 +6,7 @@ WebMCP made websites usable by agents. WebMCP Loom makes them agent-native for p
 
 ## Status
 
-This repository is in the team-foundation stage. The product direction, ownership boundaries, review workflow, and Day 1–6+ plan are defined; implementation begins through separate owner pull requests after this bootstrap is reviewed.
+This repository is in the team-foundation stage. The product direction, ownership boundaries, review workflow, and Day 1–6+ plan are defined. Implementation branches begin from protected `main` only after this bootstrap receives explicit merge approval and is merged.
 
 The earlier [Latchwork runtime foundation](https://github.com/gnanam1990/latchwork/pull/7) is evidence and a source implementation to review before porting. It is not yet code in this repository.
 
@@ -30,7 +30,7 @@ benchmarks/                deterministic tasks, runner, results and failure taxo
 docs/                      architecture, decisions, integration and demo evidence
 ```
 
-The runtime remains model-neutral. The application remains the visible output. Write-capable tools require visible human approval; booking, payment, credential, deletion, and irreversible actions are outside autonomous execution.
+The runtime remains model-neutral. The application remains the visible output. Write-capable tools require visible human approval; booking, payment, account, credential, deletion, and irreversible actions are outside autonomous execution.
 
 ## Bootstrap verification
 

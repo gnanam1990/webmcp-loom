@@ -5,11 +5,11 @@
 1. Start from the latest clean `main` after prerequisite PRs merge.
 2. Create one owner-scoped branch for one coherent change.
 3. Add deterministic tests or evidence for every behavioral claim.
-4. Complete the mandatory pre-PR local and visual gate below.
+4. Run `bash scripts/verify-repo.sh`, then complete the remaining mandatory pre-PR local and visual gate below.
 5. Commit with a descriptive conventional commit message.
 6. Open a pull request and record exact local evidence and scope boundaries.
 7. Self-review the exact head, then obtain at least one non-author review for implementation PRs.
-8. Fix demonstrated findings, rerun the complete gate, and wait for required CI.
+8. Fix demonstrated findings, rerun `bash scripts/verify-repo.sh` and the complete applicable local/visual gate, then wait for required CI.
 9. Merge only the reviewed unchanged head after explicit merge approval.
 
 Direct substantive pushes to `main` are not allowed. The license-only root commit is the repository bootstrap exception.
@@ -53,9 +53,10 @@ Before merge, a reviewer repeats the risk-relevant local run and visual flow on 
 ## Safety invariants
 
 - Model output is untrusted and schema-validated before tool execution.
+- Every tool argument is validated against the current discovered tool definition immediately before execution.
 - Dynamic tool availability is refreshed during a run.
 - Non-read-only tools pause for visible human approval.
 - Ambiguous write failures stop; they are never automatically retried.
 - Human state edits invalidate stale model decisions.
-- Booking, payment, credentials, deletion and irreversible actions are never autonomously executable.
+- Booking, payment, account, credentials, deletion and irreversible actions are never autonomously executable.
 - Public deployment requires a separate explicit release approval.

@@ -1,6 +1,6 @@
 ## Summary
 
--
+- Summary:
 
 ## Owner and scope
 
@@ -32,3 +32,5 @@
 - Findings fixed or dispositioned:
 - Non-author reviewer:
 - Reviewer local run and visual check:
+- Required CI green on reviewed head:
+- Explicit merge approval:
