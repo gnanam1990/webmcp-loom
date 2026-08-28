@@ -26,7 +26,8 @@ const store = createTripStore();
 const tools = createTravelTools(store);
 
 // The person drags an item off the board. Revision moves 1 -> 2.
-store.editAsHuman((items) => items.filter((item) => item.cityId !== 'osaka'));
+// Flights carry no city, so keep anything without one and drop Osaka.
+store.editAsHuman((items) => items.filter((item) => !('cityId' in item) || item.cityId !== 'osaka'));
 
 // An agent write still holding revision 1 is now rejected rather than applied.
 store.addItem(1, { kind: 'activity', activityId: 'ac-osa-castle', date: '2026-11-12' });

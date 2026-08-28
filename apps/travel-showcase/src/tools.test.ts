@@ -226,3 +226,38 @@ describe('write tools', () => {
     }, 1)).toThrow(/nights is required when staging a stay/);
   });
 });
+
+describe('untrusted input reaching the executor directly', () => {
+  it('rejects an unknown kind instead of treating it as a stay', () => {
+    const store = createTripStore();
+    expect(() => call(toolsFor(store).get('add_itinerary_item'), {
+      expectedRevision: 1, kind: 'hotel', refId: 'st-tok-mid', date: '2026-11-05', nights: 2,
+    }, 1)).toThrow(/Unknown itinerary kind: hotel/);
+    expect(store.getState().items).toEqual([]);
+  });
+
+  it('rejects a non-numeric captured revision rather than skipping the check', () => {
+    const store = createTripStore();
+    const tool = toolsFor(store).get('add_itinerary_item');
+    if (tool === undefined) throw new Error('Tool is not registered.');
+    expect(() => tool.execute(
+      { expectedRevision: 1, kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' },
+      { signal: undefined, expectedStateRevision: 'rev-1' },
+    )).toThrow(/numeric state revisions/);
+    expect(store.getState().items).toEqual([]);
+  });
+
+  it('rejects a flight staged off its timetable date through the tool layer', () => {
+    const store = createTripStore();
+    expect(() => call(toolsFor(store).get('add_itinerary_item'), {
+      expectedRevision: 1, kind: 'flight', refId: 'fl-nrt-blr-day', date: '2026-11-05',
+    }, 1)).toThrow(/departs on 2026-11-14/);
+  });
+
+  it('rejects a red-eye flight through the tool layer', () => {
+    const store = createTripStore();
+    expect(() => call(toolsFor(store).get('add_itinerary_item'), {
+      expectedRevision: 1, kind: 'flight', refId: 'fl-blr-nrt-redeye', date: '2026-11-05',
+    }, 1)).toThrow(/red-eye departure/);
+  });
+});

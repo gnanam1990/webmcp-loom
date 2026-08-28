@@ -7,6 +7,11 @@
  * anything in the meantime. That compare-and-swap is what makes the runtime's
  * optimistic stale-state check meaningful — a preflight read alone cannot make
  * an asynchronous write atomic.
+ *
+ * The store is the last line of validation, not the first. A tool schema is
+ * enforced by the runtime for in-app calls, but the WebMCP bridge forwards raw
+ * input straight to the executor, so every invariant that matters is checked
+ * here rather than assumed from the schema.
  */
 
 import { ACTIVITIES, FLIGHTS, HERO_TRIP_CONSTRAINTS, STAYS } from './inventory.js';
@@ -50,14 +55,44 @@ export interface TripStore {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const GENERATED_ID = /^it-(\d+)$/;
+const MILLISECONDS_PER_DAY = 86_400_000;
+
+/** Adds whole days to an ISO date without touching local time zone rules. */
+function addDays(isoDate: string, days: number): string {
+  const parsed = Date.parse(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(parsed)) {
+    throw new TravelDomainError('invalid_request', `Date is not a real calendar day: ${isoDate}`);
+  }
+  return new Date(parsed + days * MILLISECONDS_PER_DAY).toISOString().slice(0, 10);
+}
+
+function deepFreezeItem(item: ItineraryItem): ItineraryItem {
+  return Object.freeze(item);
+}
 
 export function createTripStore(
   constraints: TripConstraints = HERO_TRIP_CONSTRAINTS,
   initialItems: readonly ItineraryItem[] = [],
 ): TripStore {
   let revision = 1;
-  let items: readonly ItineraryItem[] = Object.freeze([...initialItems]);
-  let nextItemNumber = initialItems.length + 1;
+  let items: readonly ItineraryItem[] = Object.freeze(initialItems.map(deepFreezeItem));
+
+  /**
+   * Derived from the highest generated identifier rather than the item count,
+   * so a store seeded with sparse or non-sequential ids cannot reissue one.
+   */
+  const highestGeneratedNumber = (entries: readonly ItineraryItem[]): number => {
+    let highest = 0;
+    for (const entry of entries) {
+      const matched = GENERATED_ID.exec(entry.id);
+      const parsed = matched === null ? 0 : Number(matched[1]);
+      if (Number.isSafeInteger(parsed) && parsed > highest) highest = parsed;
+    }
+    return highest;
+  };
+
+  let nextItemNumber = highestGeneratedNumber(items) + 1;
 
   const snapshot = (): TripState => Object.freeze({
     revision,
@@ -89,6 +124,20 @@ export function createTripStore(
     }
   };
 
+  /** A stay occupies every night from check-in; checkout must still land in the window. */
+  const requireStaySpan = (date: string, nights: number): void => {
+    if (!Number.isInteger(nights) || nights < 1) {
+      throw new TravelDomainError('invalid_request', 'nights must be an integer of at least 1.');
+    }
+    const checkout = addDays(date, nights);
+    if (checkout > constraints.endDate) {
+      throw new TravelDomainError(
+        'invalid_request',
+        `A ${nights}-night stay from ${date} checks out on ${checkout}, past the trip end ${constraints.endDate}.`,
+      );
+    }
+  };
+
   const findItem = (itemId: string): ItineraryItem => {
     const found = items.find((item) => item.id === itemId);
     if (found === undefined) {
@@ -106,7 +155,20 @@ export function createTripStore(
       if (flight === undefined) {
         throw new TravelDomainError('not_found', `No flight with id ${request.flightId}.`);
       }
-      return Object.freeze({
+      // A flight departs when the timetable says it departs, not when the plan wants it to.
+      if (request.date !== flight.departureDate) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${flight.id} departs on ${flight.departureDate}, not ${request.date}.`,
+        );
+      }
+      if (constraints.avoidRedEyeFlights && flight.redEye) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${flight.id} is a red-eye departure and this trip avoids them.`,
+        );
+      }
+      return deepFreezeItem({
         id,
         kind: 'flight',
         date: request.date,
@@ -121,10 +183,8 @@ export function createTripStore(
       if (stay === undefined) {
         throw new TravelDomainError('not_found', `No stay with id ${request.stayId}.`);
       }
-      if (!Number.isInteger(request.nights) || request.nights < 1) {
-        throw new TravelDomainError('invalid_request', 'nights must be an integer of at least 1.');
-      }
-      return Object.freeze({
+      requireStaySpan(request.date, request.nights);
+      return deepFreezeItem({
         id,
         kind: 'stay',
         date: request.date,
@@ -140,7 +200,7 @@ export function createTripStore(
     if (activity === undefined) {
       throw new TravelDomainError('not_found', `No activity with id ${request.activityId}.`);
     }
-    return Object.freeze({
+    return deepFreezeItem({
       id,
       kind: 'activity',
       date: request.date,
@@ -152,7 +212,7 @@ export function createTripStore(
   };
 
   const commit = (next: readonly ItineraryItem[]): void => {
-    items = Object.freeze([...next]);
+    items = Object.freeze(next.map(deepFreezeItem));
     revision += 1;
   };
 
@@ -194,7 +254,14 @@ export function createTripStore(
       requireFresh(expectedRevision);
       const item = findItem(itemId);
       requireTripDate(toDate);
-      const moved = Object.freeze({ ...item, date: toDate });
+      if (item.kind === 'flight') {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${item.flightId} cannot be moved; its date comes from the timetable. Remove it and stage a different flight.`,
+        );
+      }
+      if (item.kind === 'stay') requireStaySpan(toDate, item.nights);
+      const moved = deepFreezeItem({ ...item, date: toDate });
       commit(items.map((entry) => (entry.id === itemId ? moved : entry)));
       return moved;
     },

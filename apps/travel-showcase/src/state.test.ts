@@ -161,3 +161,94 @@ describe('budget summary', () => {
     expect(summary.remainingInr).toBeGreaterThan(0);
   });
 });
+
+describe('inventory invariants enforced on write', () => {
+  it('rejects a flight staged on a date the flight does not depart', () => {
+    const store = createTripStore();
+    expect(() => store.addItem(1, { kind: 'flight', flightId: 'fl-blr-nrt-day', date: '2026-11-10' }))
+      .toThrow(/departs on 2026-11-05, not 2026-11-10/);
+    expect(store.getState().items).toEqual([]);
+  });
+
+  it('rejects a red-eye flight while the trip avoids them', () => {
+    const store = createTripStore();
+    expect(() => store.addItem(1, { kind: 'flight', flightId: 'fl-blr-nrt-redeye', date: '2026-11-05' }))
+      .toThrow(/red-eye departure/);
+  });
+
+  it('allows a red-eye flight when the trip does not avoid them', () => {
+    const relaxed = createTripStore({ ...HERO_TRIP_CONSTRAINTS, avoidRedEyeFlights: false });
+    const staged = relaxed.addItem(1, { kind: 'flight', flightId: 'fl-blr-nrt-redeye', date: '2026-11-05' });
+    expect(staged.priceInr).toBe(31_200);
+  });
+
+  it('refuses to move a flight even to a date inside the window', () => {
+    const { store, item } = storeWithFlight();
+    expect(() => store.moveItem(2, item.id, '2026-11-07')).toThrow(/cannot be moved/);
+    expect(store.getState().items[0]?.date).toBe('2026-11-05');
+  });
+
+  it('rejects a stay whose checkout falls past the trip end', () => {
+    const store = createTripStore();
+    expect(() => store.addItem(1, { kind: 'stay', stayId: 'st-tok-mid', date: '2026-11-14', nights: 14 }))
+      .toThrow(/checks out on 2026-11-28, past the trip end 2026-11-14/);
+    expect(() => store.addItem(1, { kind: 'stay', stayId: 'st-tok-mid', date: '2026-11-13', nights: 2 }))
+      .toThrow(/past the trip end/);
+  });
+
+  it('accepts a stay that checks out exactly on the trip end', () => {
+    const store = createTripStore();
+    const stay = store.addItem(1, { kind: 'stay', stayId: 'st-tok-mid', date: '2026-11-13', nights: 1 });
+    expect(stay.kind).toBe('stay');
+    if (stay.kind !== 'stay') throw new Error('Expected a staged stay.');
+    expect(stay.nights).toBe(1);
+  });
+
+  it('rejects moving a stay to a date that would overrun the trip end', () => {
+    const store = createTripStore();
+    const stay = store.addItem(1, { kind: 'stay', stayId: 'st-kyo-mid', date: '2026-11-05', nights: 4 });
+    expect(() => store.moveItem(2, stay.id, '2026-11-12')).toThrow(/past the trip end/);
+    expect(store.getState().items[0]?.date).toBe('2026-11-05');
+  });
+});
+
+describe('store integrity', () => {
+  it('never reissues an identifier when seeded with non-sequential items', () => {
+    const seeded = createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: 'it-7',
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: 900,
+      label: 'Seeded',
+      activityId: 'ac-tok-akihabara',
+      cityId: 'tokyo',
+    }]);
+    const added = seeded.addItem(1, { kind: 'activity', activityId: 'ac-tok-teamlab', date: '2026-11-07' });
+    expect(added.id).toBe('it-8');
+    expect(new Set(seeded.getState().items.map((item) => item.id)).size).toBe(2);
+  });
+
+  it('freezes items so state cannot change without a revision bump', () => {
+    const { store } = storeWithFlight();
+    const item = store.getState().items[0] as ItineraryItem;
+    expect(Object.isFrozen(item)).toBe(true);
+    expect(() => {
+      (item as { date: string }).date = '2026-11-09';
+    }).toThrow(TypeError);
+    expect(store.getState().revision).toBe(2);
+  });
+
+  it('freezes items introduced by a human edit', () => {
+    const { store } = storeWithFlight();
+    const next = store.editAsHuman((items) => [...items, {
+      id: 'it-99',
+      kind: 'activity',
+      date: '2026-11-08',
+      priceInr: 0,
+      label: 'Human addition',
+      activityId: 'ac-kyo-fushimi',
+      cityId: 'kyoto',
+    }]);
+    expect(next.items.every((item) => Object.isFrozen(item))).toBe(true);
+  });
+});

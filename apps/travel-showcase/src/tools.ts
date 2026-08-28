@@ -49,6 +49,11 @@ function requireString(input: JsonObject, key: string): string {
  * WebMCP can carry. When the in-app runtime also supplies its captured revision
  * out-of-band, the two must agree: a mismatch means the plan and the call were
  * built against different states.
+ *
+ * The runtime's revision type also permits strings. This domain issues numeric
+ * revisions only, so a captured value of any other type is a contract mismatch
+ * and is rejected rather than skipped — silently ignoring it would let a call
+ * execute against a different planned state than the one it was built on.
  */
 function requireExpectedRevision(input: JsonObject, context: RuntimeToolExecuteContext): number {
   const declared = readNumber(input, 'expectedRevision');
@@ -56,11 +61,19 @@ function requireExpectedRevision(input: JsonObject, context: RuntimeToolExecuteC
     throw new TravelDomainError('invalid_request', 'expectedRevision is required and must be an integer.');
   }
   const captured = context.expectedStateRevision;
-  if (typeof captured === 'number' && captured !== declared) {
-    throw new TravelDomainError(
-      'stale_revision',
-      `Call declared revision ${declared} but was planned against revision ${captured}.`,
-    );
+  if (captured !== undefined) {
+    if (typeof captured !== 'number') {
+      throw new TravelDomainError(
+        'invalid_request',
+        `This domain uses numeric state revisions; the runtime supplied ${typeof captured}.`,
+      );
+    }
+    if (captured !== declared) {
+      throw new TravelDomainError(
+        'stale_revision',
+        `Call declared revision ${declared} but was planned against revision ${captured}.`,
+      );
+    }
   }
   return declared;
 }
@@ -215,17 +228,25 @@ export function createTravelTools(store: TripStore): RuntimeTool[] {
         const refId = requireString(input, 'refId');
         const date = requireString(input, 'date');
 
+        // The schema enum only binds callers the runtime validates. The WebMCP
+        // bridge forwards raw input, so an unknown kind must fail here rather
+        // than fall through into the stay branch.
         let request: AddItemRequest;
         if (kind === 'flight') {
           request = { kind: 'flight', flightId: refId, date };
         } else if (kind === 'activity') {
           request = { kind: 'activity', activityId: refId, date };
-        } else {
+        } else if (kind === 'stay') {
           const nights = readNumber(input, 'nights');
           if (nights === undefined) {
             throw new TravelDomainError('invalid_request', 'nights is required when staging a stay.');
           }
           request = { kind: 'stay', stayId: refId, date, nights };
+        } else {
+          throw new TravelDomainError(
+            'invalid_request',
+            `Unknown itinerary kind: ${kind}. Expected activity, flight or stay.`,
+          );
         }
 
         const item = store.addItem(expectedRevision, request);
