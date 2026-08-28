@@ -142,3 +142,10 @@ flowchart LR
   U --> D
   D --> P[Reusable package and reviewed release]
 ```
+
+## Source references
+
+- **WebMCP Agent-Native Runtime Winning PRD v3**, sections 49–58 (pages 15–19): final product positioning, collaboration-first travel showcase, benchmark proof, priority order and staged execution plan.
+- [Latchwork PR #7](https://github.com/gnanam1990/latchwork/pull/7): reviewed source evidence for the bounded runtime foundation. It must be independently revalidated before any code is ported.
+
+The source DOCX is intentionally not committed to this public repository. These references describe the planning basis; they do not claim that the planned runtime or showcase is already implemented here.
