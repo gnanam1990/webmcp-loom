@@ -1,8 +1,8 @@
-# WebMCP Agent-Native Runtime
+# WebMCP Loom
 
-**Define a website's semantic capabilities once, then use the same WebMCP surface for external agents and a first-class collaborative agent inside the application.**
+**Weave one semantic WebMCP tool surface across external agents and a first-class collaborative agent inside the application.**
 
-WebMCP made websites usable by agents. This project makes websites agent-native for people.
+WebMCP made websites usable by agents. WebMCP Loom makes them agent-native for people.
 
 ## Status
 
