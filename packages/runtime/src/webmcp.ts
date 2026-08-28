@@ -1,5 +1,5 @@
 import { AgentRuntimeError } from './errors.js';
-import { isPlainRecord } from './json.js';
+import { isJsonCompatible, isPlainRecord } from './json.js';
 import {
   describeTool,
   snapshotToolRegistry,
@@ -16,6 +16,7 @@ import type {
 
 const MAX_WEBMCP_SCHEMA_CHARACTERS = 16_000;
 const MAX_WEBMCP_RESULT_CHARACTERS = 100_000;
+const MAX_TRUSTED_READ_ONLY_ORIGINS = 64;
 
 export interface WebMcpToolDefinition {
   name: string;
@@ -33,7 +34,8 @@ export interface RegisteredWebMcpTool {
   name: string;
   title?: string;
   description: string;
-  inputSchema?: string;
+  /** The current WebMCP shape is an object; strings remain accepted for draft compatibility. */
+  inputSchema?: JsonSchema | string;
   origin?: string;
   annotations?: Partial<RuntimeToolAnnotations>;
 }
@@ -63,6 +65,7 @@ export interface RegisterRuntimeToolsOptions {
 
 export interface WebMcpToolProviderOptions {
   fromOrigins?: readonly string[];
+  trustedReadOnlyOrigins?: readonly string[];
 }
 
 export async function registerRuntimeTools(
@@ -117,6 +120,9 @@ export function createWebMcpToolProvider(
   modelContext: WebMcpModelContext,
   options: WebMcpToolProviderOptions = {},
 ): RuntimeToolProvider {
+  const trustedReadOnlyOrigins = normalizeTrustedReadOnlyOrigins(
+    options.trustedReadOnlyOrigins,
+  );
   const getOptions = options.fromOrigins === undefined
     ? undefined
     : { fromOrigins: [...options.fromOrigins] };
@@ -128,7 +134,12 @@ export function createWebMcpToolProvider(
       if (!Array.isArray(registered)) {
         throw new AgentRuntimeError('invalid_tool', 'WebMCP getTools() must return an array.');
       }
-      return registered.map((tool) => toRuntimeTool(modelContext, tool, getOptions));
+      return registered.map((tool) => toRuntimeTool(
+        modelContext,
+        tool,
+        getOptions,
+        trustedReadOnlyOrigins,
+      ));
     },
   };
 }
@@ -161,8 +172,9 @@ function toRuntimeTool(
   modelContext: WebMcpModelContext,
   registered: RegisteredWebMcpTool,
   getOptions: { fromOrigins: string[] } | undefined,
+  trustedReadOnlyOrigins: ReadonlySet<string>,
 ): RuntimeTool {
-  const initial = normalizeRegisteredTool(registered);
+  const initial = normalizeRegisteredTool(registered, trustedReadOnlyOrigins);
   const fingerprint = toolFingerprint(initial);
   return {
     ...describeTool(initial),
@@ -176,13 +188,10 @@ function toRuntimeTool(
       if (!Array.isArray(currentTools)) {
         throw new AgentRuntimeError('invalid_tool', 'WebMCP getTools() must return an array.');
       }
-      const candidates = currentTools.map((candidate) => ({
-        registered: candidate,
-        runtime: normalizeRegisteredTool(candidate),
-      }));
-      const matches = candidates.filter(({ runtime }) => (
-        runtime.name === initial.name
-        && (runtime.origin ?? '') === (initial.origin ?? '')
+      const matches = currentTools.filter((candidate) => registeredIdentityMatches(
+        candidate,
+        initial.name,
+        initial.origin,
       ));
       if (matches.length !== 1 || matches[0] === undefined) {
         throw new AgentRuntimeError(
@@ -191,14 +200,15 @@ function toRuntimeTool(
         );
       }
       const match = matches[0];
-      if (toolFingerprint(match.runtime) !== fingerprint) {
+      const current = normalizeRegisteredTool(match, trustedReadOnlyOrigins);
+      if (toolFingerprint(current) !== fingerprint) {
         throw new AgentRuntimeError(
           'tool_changed',
           `WebMCP tool definition changed before execution: ${registered.name}`,
         );
       }
       const rawResult = await modelContext.executeTool(
-        match.registered,
+        match,
         input,
         context.signal === undefined ? {} : { signal: context.signal },
       );
@@ -207,7 +217,25 @@ function toRuntimeTool(
   };
 }
 
-function normalizeRegisteredTool(registered: RegisteredWebMcpTool): RuntimeTool {
+function registeredIdentityMatches(
+  value: unknown,
+  expectedName: string,
+  expectedOrigin: string | undefined,
+): value is RegisteredWebMcpTool {
+  if (typeof value !== 'object' || value === null) return false;
+  try {
+    const candidate = value as Record<string, unknown>;
+    return candidate.name === expectedName
+      && (candidate.origin ?? '') === (expectedOrigin ?? '');
+  } catch {
+    return false;
+  }
+}
+
+function normalizeRegisteredTool(
+  registered: RegisteredWebMcpTool,
+  trustedReadOnlyOrigins: ReadonlySet<string>,
+): RuntimeTool {
   if (typeof registered !== 'object' || registered === null) {
     throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP tools must be objects.');
   }
@@ -253,7 +281,8 @@ function normalizeRegisteredTool(registered: RegisteredWebMcpTool): RuntimeTool 
     description: registered.description,
     inputSchema: schema,
     annotations: {
-      readOnlyHint: registered.annotations?.readOnlyHint === true,
+      readOnlyHint: registered.annotations?.readOnlyHint === true
+        && isTrustedReadOnlyOrigin(registered.origin, trustedReadOnlyOrigins),
       ...(registered.annotations?.untrustedContentHint === undefined
         ? {}
         : { untrustedContentHint: registered.annotations.untrustedContentHint }),
@@ -265,26 +294,98 @@ function normalizeRegisteredTool(registered: RegisteredWebMcpTool): RuntimeTool 
   };
 }
 
-function parseRegisteredSchema(serialized: string | undefined): JsonSchema {
-  if (serialized !== undefined && typeof serialized !== 'string') {
-    throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP inputSchema must be a string.');
+function normalizeTrustedReadOnlyOrigins(
+  origins: readonly string[] | undefined,
+): ReadonlySet<string> {
+  if (origins === undefined) return new Set();
+  if (origins.length > MAX_TRUSTED_READ_ONLY_ORIGINS) {
+    throw new AgentRuntimeError(
+      'resource_limit',
+      `Trusted read-only origins exceed the ${MAX_TRUSTED_READ_ONLY_ORIGINS}-origin limit.`,
+    );
   }
-  if (serialized === undefined || serialized === '') {
+  const normalized = new Set<string>();
+  for (const value of origins) {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new AgentRuntimeError(
+        'invalid_configuration',
+        'Trusted read-only origins must be non-empty URLs.',
+      );
+    }
+    let origin: string;
+    try {
+      origin = new URL(value).origin;
+    } catch {
+      throw new AgentRuntimeError(
+        'invalid_configuration',
+        `Trusted read-only origin is invalid: ${value}`,
+      );
+    }
+    if (origin === 'null') {
+      throw new AgentRuntimeError(
+        'invalid_configuration',
+        `Trusted read-only origin must be a tuple origin: ${value}`,
+      );
+    }
+    normalized.add(origin);
+  }
+  return normalized;
+}
+
+function isTrustedReadOnlyOrigin(
+  value: string | undefined,
+  trustedOrigins: ReadonlySet<string>,
+): boolean {
+  if (value === undefined) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.origin === value && trustedOrigins.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
+
+function parseRegisteredSchema(value: JsonSchema | string | undefined): JsonSchema {
+  if (value === undefined || value === '') {
     return { type: 'object', properties: {}, additionalProperties: false };
+  }
+
+  if (typeof value === 'string') {
+    if (value.length > MAX_WEBMCP_SCHEMA_CHARACTERS) {
+      throw new AgentRuntimeError('resource_limit', 'Registered WebMCP inputSchema is too large.');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP inputSchema is malformed JSON.');
+    }
+    if (!isPlainRecord(parsed)) {
+      throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP inputSchema must be an object.');
+    }
+    return parsed;
+  }
+
+  let serialized: string;
+  try {
+    if (!isPlainRecord(value) || !isJsonCompatible(value)) {
+      throw new AgentRuntimeError(
+        'invalid_tool',
+        'Registered WebMCP inputSchema must be a JSON-compatible object.',
+      );
+    }
+    serialized = JSON.stringify(value);
+  } catch (error) {
+    if (error instanceof AgentRuntimeError) throw error;
+    throw new AgentRuntimeError(
+      'invalid_tool',
+      'Registered WebMCP inputSchema must be a JSON-compatible object.',
+    );
   }
   if (serialized.length > MAX_WEBMCP_SCHEMA_CHARACTERS) {
     throw new AgentRuntimeError('resource_limit', 'Registered WebMCP inputSchema is too large.');
   }
-  let schema: unknown;
-  try {
-    schema = JSON.parse(serialized) as unknown;
-  } catch {
-    throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP inputSchema is malformed JSON.');
-  }
-  if (!isPlainRecord(schema)) {
-    throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP inputSchema must be an object.');
-  }
-  return schema;
+  return JSON.parse(serialized) as JsonSchema;
 }
 
 function parseWebMcpResult(result: string): JsonValue {

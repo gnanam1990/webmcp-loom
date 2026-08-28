@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runAgentRuntime } from './runtime.js';
 import type { RuntimeTool } from './types.js';
 import {
   createWebMcpToolProvider,
@@ -33,7 +34,7 @@ function registered(overrides: Partial<RegisteredWebMcpTool> = {}): RegisteredWe
     name: 'inspect',
     title: 'Inspect',
     description: 'Inspect a fixture.',
-    inputSchema: JSON.stringify(runtimeTool().inputSchema),
+    inputSchema: runtimeTool().inputSchema,
     origin: 'https://example.test',
     annotations: { readOnlyHint: true },
     ...overrides,
@@ -145,6 +146,60 @@ describe('createWebMcpToolProvider', () => {
     expect(modelContext.getTools).toHaveBeenCalledWith({
       fromOrigins: ['https://example.test'],
     });
+  });
+
+  it('accepts legacy serialized schemas while using the current object contract', async () => {
+    const legacyContext = context({
+      getTools: vi.fn(async () => [registered({
+        inputSchema: JSON.stringify(runtimeTool().inputSchema),
+      })]),
+    });
+    const tools = await createWebMcpToolProvider(legacyContext)
+      .getTools({ signal: undefined });
+
+    expect(tools[0]?.inputSchema).toEqual(runtimeTool().inputSchema);
+  });
+
+  it('does not trust a WebMCP read-only hint without an explicit origin allowlist', async () => {
+    const modelContext = context();
+    const untrustedTools = await createWebMcpToolProvider(modelContext)
+      .getTools({ signal: undefined });
+    const trustedTools = await createWebMcpToolProvider(modelContext, {
+      trustedReadOnlyOrigins: ['https://example.test/app'],
+    }).getTools({ signal: undefined });
+
+    expect(untrustedTools[0]?.annotations.readOnlyHint).toBe(false);
+    expect(trustedTools[0]?.annotations.readOnlyHint).toBe(true);
+  });
+
+  it('requires approval when an untrusted WebMCP tool claims to be read-only', async () => {
+    const modelContext = context();
+    const result = await runAgentRuntime({
+      goal: 'Inspect the fixture.',
+      model: {
+        generate: async () => JSON.stringify({
+          type: 'tool_call',
+          tool: 'inspect',
+          input: { id: 'fixture-1' },
+        }),
+      },
+      toolProvider: createWebMcpToolProvider(modelContext),
+    });
+
+    expect(result.status).toBe('approval_required');
+    expect(modelContext.executeTool).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid or excessive trusted read-only origin configuration', () => {
+    expect(() => createWebMcpToolProvider(context(), {
+      trustedReadOnlyOrigins: ['data:text/plain,unsafe'],
+    })).toThrow(/tuple origin/);
+    expect(() => createWebMcpToolProvider(context(), {
+      trustedReadOnlyOrigins: Array.from(
+        { length: 65 },
+        (_, index) => `https://trusted-${index}.example`,
+      ),
+    })).toThrow(/64-origin limit/);
   });
 
   it('forwards the exact active descriptor, input and abort signal to executeTool', async () => {
@@ -262,10 +317,33 @@ describe('createWebMcpToolProvider', () => {
     })).rejects.toMatchObject({ code: 'invalid_tool' });
   });
 
-  it('bounds serialized schemas and results before parsing them', async () => {
+  it('ignores malformed unrelated entries when revalidating the requested tool', async () => {
+    const active = registered();
+    const modelContext = context({
+      getTools: vi.fn()
+        .mockResolvedValueOnce([active])
+        .mockResolvedValueOnce([
+          registered({
+            name: 'unrelated',
+            inputSchema: JSON.stringify({ description: 'x'.repeat(16_001) }),
+          }),
+          active,
+        ]),
+    });
+    const tools = await createWebMcpToolProvider(modelContext)
+      .getTools({ signal: undefined });
+
+    await expect(tools[0]?.execute({}, {
+      signal: undefined,
+      expectedStateRevision: undefined,
+    })).resolves.toEqual({ ready: true });
+    expect(modelContext.executeTool).toHaveBeenCalledWith(active, {}, {});
+  });
+
+  it('bounds schemas and serialized results before parsing them', async () => {
     await expect(createWebMcpToolProvider(context({
       getTools: vi.fn(async () => [registered({
-        inputSchema: JSON.stringify({ description: 'x'.repeat(16_001) }),
+        inputSchema: { description: 'x'.repeat(16_001) },
       })]),
     })).getTools({ signal: undefined })).rejects.toMatchObject({ code: 'resource_limit' });
 

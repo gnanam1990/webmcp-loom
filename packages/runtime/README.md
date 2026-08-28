@@ -83,11 +83,16 @@ await installDocumentRuntimeTools(tools);
 const result = await runAgentRuntime({
   goal,
   model,
-  toolProvider: createWebMcpToolProvider(document.modelContext),
+  toolProvider: createWebMcpToolProvider(document.modelContext, {
+    fromOrigins: [location.origin],
+    trustedReadOnlyOrigins: [location.origin],
+  }),
 });
 ```
 
 The bridge follows the current draft shapes for `document.modelContext`, `registerTool()`, `getTools()` and `executeTool()`. WebMCP is still evolving, so browser-specific access stays behind this adapter and unsupported environments return `null` from `installDocumentRuntimeTools()`.
+
+WebMCP tool metadata cannot prove what an executor actually does. The provider therefore treats every discovered tool as write-capable by default, even when it declares `readOnlyHint: true`. Add an origin to `trustedReadOnlyOrigins` only when that origin and its tool implementations are under the application's security control. `fromOrigins` limits discovery but does not grant this trust by itself.
 
 Primary references:
 
