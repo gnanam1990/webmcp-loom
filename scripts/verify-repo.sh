@@ -3,7 +3,10 @@ set -euo pipefail
 
 git diff --check HEAD
 
-if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+if [[ -n "${VERIFY_BASE_SHA:-}" && ! "${VERIFY_BASE_SHA}" =~ ^0+$ ]]; then
+  git rev-parse --verify "${VERIFY_BASE_SHA}^{commit}" >/dev/null
+  git diff --check "${VERIFY_BASE_SHA}...HEAD"
+elif [[ -n "${GITHUB_BASE_REF:-}" ]]; then
   git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
 else
   git show --check --format= HEAD
