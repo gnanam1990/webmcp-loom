@@ -254,7 +254,14 @@ h2 { font-size: 1.05rem; }
 .is-over { color: var(--over); }
 
 .meter { height: 8px; background: var(--page); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-.meter__fill { height: 100%; background: var(--accent); transition: width 240ms ease; }
+/* Scaled rather than width-animated: transform composites, width relayouts. */
+.meter__fill {
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 240ms ease;
+}
 .meter__fill.is-over { background: var(--over); }
 
 .breakdown { display: flex; gap: 18px; margin: 14px 0 0; }

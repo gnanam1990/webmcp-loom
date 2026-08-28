@@ -165,7 +165,10 @@ function Budget({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Element 
         <span className="budget__cap"> of {money(budget.budgetInr)}</span>
       </p>
       <div className="meter" role="img" aria-label={`${used}% of budget committed`}>
-        <div className={`meter__fill ${budget.overBudget ? 'is-over' : ''}`} style={{ width: `${used}%` }} />
+        <div
+          className={`meter__fill ${budget.overBudget ? 'is-over' : ''}`}
+          style={{ transform: `scaleX(${used / 100})` }}
+        />
       </div>
       <dl className="breakdown">
         {(['flight', 'stay', 'activity'] as const).map((kind) => (
