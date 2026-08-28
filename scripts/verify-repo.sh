@@ -15,6 +15,7 @@ required_files=(
   CONTRIBUTING.md
   docs/product-direction.md
   docs/team-work-split.md
+  docs/verification-standard.md
   .github/pull_request_template.md
   .github/workflows/ci.yml
 )

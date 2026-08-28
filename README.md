@@ -18,7 +18,7 @@ The earlier [Latchwork runtime foundation](https://github.com/gnanam1990/latchwo
 | Anandh | local models, prompting, tool retrieval, benchmarks and measured results |
 | Vasanth | collaborative travel app, domain tools, UI/UX and deployment readiness |
 
-See [the complete team work split](docs/team-work-split.md) and [product direction](docs/product-direction.md).
+See [the complete team work split](docs/team-work-split.md), [product direction](docs/product-direction.md), and [mandatory verification standard](docs/verification-standard.md).
 
 ## Planned architecture
 
@@ -42,7 +42,7 @@ Implementation PRs will replace this documentation-only gate with lint, typechec
 
 ## Contribution flow
 
-All substantive changes use a focused branch and pull request. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting.
+All substantive changes use a focused branch and pull request. An implementation PR may be opened only after the complete local test/build gate and a running-app visual check pass. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting.
 
 ## License
 

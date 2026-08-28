@@ -81,7 +81,8 @@ Freeze the Day 2 shared interfaces and merge order. No owner begins integration 
 - Extract the proven runtime package and add a second thin integration fixture.
 - Add cloud-adapter parity without changing policy semantics.
 - Publish benchmark evidence, architecture, integration guide, limitations and a 3-minute demo script.
-- Require full local verification, author self-review, non-author review, green CI and explicit merge approval for every PR.
+- Before opening every implementation PR, require full local verification, production build, running-app browser/computer visual inspection, and recorded evidence.
+- Require author self-review, non-author exact-head local/visual review, green CI and explicit merge approval for every PR.
 - Require separate explicit approval before public deployment.
 
 ## Branch and merge strategy
@@ -124,6 +125,7 @@ Day 3 passes only when:
 - the trace identifies the active action and affected entity;
 - deterministic failure, cancellation, approval, step-limit and recovery tests pass;
 - every merged implementation PR has local evidence, green CI and a non-author review.
+- each implementation PR passed its local build, running-app visual check and evidence gate before it was opened.
 
 ## Dependency graph
 
