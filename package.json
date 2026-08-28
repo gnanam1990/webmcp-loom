@@ -1,0 +1,32 @@
+{
+  "name": "webmcp-loom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent-native runtime for WebMCP applications.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @webmcp-loom/runtime",
+    "lint": "eslint .",
+    "smoke": "node scripts/runtime-smoke.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --pretty false",
+    "verify:repo": "bash scripts/verify-repo.sh",
+    "verify": "npm run verify:repo && npm run lint && npm run typecheck && npm test && npm run build && npm run smoke && npm audit --audit-level=high"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.1",
+    "eslint": "10.9.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.68.0",
+    "vitest": "4.1.11"
+  }
+}

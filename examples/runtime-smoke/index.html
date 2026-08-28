@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebMCP Loom Runtime Smoke</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #07130f; color: #edfdf5; }
+      main { box-sizing: border-box; width: min(680px, calc(100% - 40px)); padding: 36px; border: 1px solid #244b3b; border-radius: 24px; background: #0c1d17; box-shadow: 0 24px 80px #0008; }
+      p { color: #aac7ba; line-height: 1.6; }
+      #status { display: inline-flex; gap: 10px; align-items: center; padding: 9px 14px; border-radius: 999px; background: #133226; color: #8df0bd; font-weight: 700; }
+      #status[data-state="failed"] { background: #411b22; color: #ffb3bf; }
+      dl { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 28px 0 0; }
+      div { padding: 18px; border-radius: 16px; background: #10271e; }
+      dt { color: #85aa99; font-size: 0.82rem; }
+      dd { margin: 7px 0 0; font-size: 1.45rem; font-weight: 750; }
+      pre { overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 24px; padding: 18px; border-radius: 16px; background: #06100c; color: #b9dacb; }
+      @media (max-width: 520px) { main { padding: 24px; } dl { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Built-package browser verification</p>
+      <h1>WebMCP Loom runtime smoke</h1>
+      <span id="status">Running…</span>
+      <dl>
+        <div><dt>Tool calls</dt><dd id="tool-count">—</dd></div>
+        <div><dt>Final state</dt><dd id="final-state">—</dd></div>
+      </dl>
+      <pre id="trace">Waiting for runtime…</pre>
+    </main>
+    <script type="module" src="./runtime-smoke.js"></script>
+  </body>
+</html>
