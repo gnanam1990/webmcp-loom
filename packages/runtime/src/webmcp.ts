@@ -173,9 +173,16 @@ function toRuntimeTool(
         context.signal,
       );
       throwIfAborted(context.signal);
-      const matches = currentTools.filter((candidate) => (
-        candidate.name === registered.name
-        && (candidate.origin ?? '') === (registered.origin ?? '')
+      if (!Array.isArray(currentTools)) {
+        throw new AgentRuntimeError('invalid_tool', 'WebMCP getTools() must return an array.');
+      }
+      const candidates = currentTools.map((candidate) => ({
+        registered: candidate,
+        runtime: normalizeRegisteredTool(candidate),
+      }));
+      const matches = candidates.filter(({ runtime }) => (
+        runtime.name === initial.name
+        && (runtime.origin ?? '') === (initial.origin ?? '')
       ));
       if (matches.length !== 1 || matches[0] === undefined) {
         throw new AgentRuntimeError(
@@ -183,15 +190,15 @@ function toRuntimeTool(
           `WebMCP tool became unavailable or ambiguous: ${registered.name}`,
         );
       }
-      const current = normalizeRegisteredTool(matches[0]);
-      if (toolFingerprint(current) !== fingerprint) {
+      const match = matches[0];
+      if (toolFingerprint(match.runtime) !== fingerprint) {
         throw new AgentRuntimeError(
           'tool_changed',
           `WebMCP tool definition changed before execution: ${registered.name}`,
         );
       }
       const rawResult = await modelContext.executeTool(
-        matches[0],
+        match.registered,
         input,
         context.signal === undefined ? {} : { signal: context.signal },
       );
@@ -203,6 +210,41 @@ function toRuntimeTool(
 function normalizeRegisteredTool(registered: RegisteredWebMcpTool): RuntimeTool {
   if (typeof registered !== 'object' || registered === null) {
     throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP tools must be objects.');
+  }
+  if (typeof registered.name !== 'string' || !registered.name.trim()) {
+    throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP tools require a name.');
+  }
+  if (registered.title !== undefined && typeof registered.title !== 'string') {
+    throw new AgentRuntimeError('invalid_tool', `WebMCP tool title is invalid: ${registered.name}`);
+  }
+  if (typeof registered.description !== 'string' || !registered.description.trim()) {
+    throw new AgentRuntimeError(
+      'invalid_tool',
+      `WebMCP tool description is invalid: ${registered.name}`,
+    );
+  }
+  if (registered.origin !== undefined && typeof registered.origin !== 'string') {
+    throw new AgentRuntimeError('invalid_tool', `WebMCP tool origin is invalid: ${registered.name}`);
+  }
+  if (registered.annotations !== undefined && !isPlainRecord(registered.annotations)) {
+    throw new AgentRuntimeError(
+      'invalid_tool',
+      `WebMCP tool annotations are invalid: ${registered.name}`,
+    );
+  }
+  if (registered.annotations?.readOnlyHint !== undefined
+    && typeof registered.annotations.readOnlyHint !== 'boolean') {
+    throw new AgentRuntimeError(
+      'invalid_tool',
+      `WebMCP tool readOnlyHint is invalid: ${registered.name}`,
+    );
+  }
+  if (registered.annotations?.untrustedContentHint !== undefined
+    && typeof registered.annotations.untrustedContentHint !== 'boolean') {
+    throw new AgentRuntimeError(
+      'invalid_tool',
+      `WebMCP tool untrustedContentHint is invalid: ${registered.name}`,
+    );
   }
   const schema = parseRegisteredSchema(registered.inputSchema);
   return {
@@ -224,6 +266,9 @@ function normalizeRegisteredTool(registered: RegisteredWebMcpTool): RuntimeTool 
 }
 
 function parseRegisteredSchema(serialized: string | undefined): JsonSchema {
+  if (serialized !== undefined && typeof serialized !== 'string') {
+    throw new AgentRuntimeError('invalid_tool', 'Registered WebMCP inputSchema must be a string.');
+  }
   if (serialized === undefined || serialized === '') {
     return { type: 'object', properties: {}, additionalProperties: false };
   }

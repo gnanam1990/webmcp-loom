@@ -238,6 +238,30 @@ describe('createWebMcpToolProvider', () => {
       .rejects.toMatchObject({ code: 'invalid_tool' });
   });
 
+  it('rejects malformed descriptor fields and active registries deterministically', async () => {
+    await expect(createWebMcpToolProvider(context({
+      getTools: vi.fn(async () => [registered({ title: 7 as never })]),
+    })).getTools({ signal: undefined })).rejects.toMatchObject({ code: 'invalid_tool' });
+    await expect(createWebMcpToolProvider(context({
+      getTools: vi.fn(async () => [registered({ annotations: 'read-only' as never })]),
+    })).getTools({ signal: undefined })).rejects.toMatchObject({ code: 'invalid_tool' });
+    await expect(createWebMcpToolProvider(context({
+      getTools: vi.fn(async () => [registered({ inputSchema: 7 as never })]),
+    })).getTools({ signal: undefined })).rejects.toMatchObject({ code: 'invalid_tool' });
+
+    const activeRegistryContext = context({
+      getTools: vi.fn()
+        .mockResolvedValueOnce([registered()])
+        .mockResolvedValueOnce({ invalid: true }),
+    });
+    const tools = await createWebMcpToolProvider(activeRegistryContext)
+      .getTools({ signal: undefined });
+    await expect(tools[0]?.execute({}, {
+      signal: undefined,
+      expectedStateRevision: undefined,
+    })).rejects.toMatchObject({ code: 'invalid_tool' });
+  });
+
   it('bounds serialized schemas and results before parsing them', async () => {
     await expect(createWebMcpToolProvider(context({
       getTools: vi.fn(async () => [registered({
