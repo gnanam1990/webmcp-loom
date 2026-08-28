@@ -147,18 +147,16 @@ function serializeJsonBounded(
           visit(descriptor.value, depth + 1);
           if (truncated || invalid) return;
         }
-        let expectedKey = 0;
         for (const key in candidate) {
           if (!Object.hasOwn(candidate, key)) continue;
-          if (key !== String(expectedKey)) {
+          const index = Number(key);
+          if (!Number.isInteger(index)
+            || index < 0
+            || index >= candidate.length
+            || key !== String(index)) {
             invalid = true;
             return;
           }
-          expectedKey += 1;
-        }
-        if (expectedKey !== candidate.length) {
-          invalid = true;
-          return;
         }
         append(']');
         return;

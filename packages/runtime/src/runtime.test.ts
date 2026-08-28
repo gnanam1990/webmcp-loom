@@ -326,6 +326,23 @@ describe('runAgentRuntime', () => {
     });
     expect(extraPropertyResult.history[0]?.output).toMatchObject({ unavailable: true });
 
+    const nonEnumerableElement: unknown[] = [];
+    Object.defineProperty(nonEnumerableElement, '0', {
+      configurable: true,
+      enumerable: false,
+      value: 'included by JSON arrays',
+      writable: true,
+    });
+    const nonEnumerableResult = await runAgentRuntime({
+      goal: 'Inspect.',
+      model: model(call()),
+      toolProvider: createStaticToolProvider([tool({
+        execute: () => nonEnumerableElement,
+      })]),
+      maxSteps: 1,
+    });
+    expect(nonEnumerableResult.history[0]?.output).toEqual(['included by JSON arrays']);
+
     Object.defineProperty(Object.prototype, 'runtimeEnumerablePollution', {
       configurable: true,
       enumerable: true,
