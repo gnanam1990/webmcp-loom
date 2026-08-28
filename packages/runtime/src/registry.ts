@@ -25,7 +25,7 @@ export function snapshotToolRegistry(tools: readonly RuntimeTool[]): RuntimeTool
     if (typeof candidate !== 'object' || candidate === null) {
       throw invalidTool('Runtime tool entries must be objects.');
     }
-    const { name, title, description } = candidate;
+    const { name, title, description, execute } = candidate;
     if (typeof name !== 'string' || !name.trim()) throw invalidTool('Runtime tools require a name.');
     if (name !== name.trim()) throw invalidTool(`Tool names cannot have surrounding whitespace: ${name}`);
     if (name.length > MAX_TOOL_NAME_CHARACTERS) throw resourceLimit(`Tool name is too long: ${name}`);
@@ -54,7 +54,7 @@ export function snapshotToolRegistry(tools: readonly RuntimeTool[]): RuntimeTool
     )) {
       throw invalidTool(`Tool origin is invalid: ${name}`);
     }
-    if (typeof candidate.execute !== 'function') {
+    if (typeof execute !== 'function') {
       throw invalidTool(`Tool executor is invalid: ${name}`);
     }
 
@@ -71,7 +71,7 @@ export function snapshotToolRegistry(tools: readonly RuntimeTool[]): RuntimeTool
           : { untrustedContentHint: candidate.annotations.untrustedContentHint }),
       },
       ...(candidate.origin === undefined ? {} : { origin: candidate.origin }),
-      execute: candidate.execute.bind(candidate),
+      execute: (input, context) => execute.call(tool, input, context),
     };
     surfaceCharacters += toolFingerprint(tool).length;
     if (surfaceCharacters > MAX_TOOL_SURFACE_CHARACTERS) {
@@ -106,10 +106,25 @@ export function toolFingerprint(tool: RuntimeTool | RuntimeToolDescriptor): stri
 }
 
 export function createStaticToolProvider(tools: readonly RuntimeTool[]): RuntimeToolProvider {
-  const stableTools = snapshotToolRegistry(tools);
+  const stableTools = freezeToolRegistry(snapshotToolRegistry(tools));
   return {
-    getTools: () => snapshotToolRegistry(stableTools),
+    getTools: () => stableTools,
   };
+}
+
+function freezeToolRegistry(tools: RuntimeTool[]): readonly RuntimeTool[] {
+  for (const tool of tools) {
+    freezeJsonTree(tool.inputSchema);
+    Object.freeze(tool.annotations);
+    Object.freeze(tool);
+  }
+  return Object.freeze(tools);
+}
+
+function freezeJsonTree(value: unknown): void {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return;
+  for (const child of Object.values(value)) freezeJsonTree(child);
+  Object.freeze(value);
 }
 
 function invalidTool(message: string): AgentRuntimeError {

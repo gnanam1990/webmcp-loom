@@ -52,6 +52,13 @@ describe('tool schema validation', () => {
     expect(() => assertValidToolSchema({ required: ['id', 'id'] })).toThrow(/invalid required/);
     expect(() => assertValidToolSchema({ minLength: -1 })).toThrow(/non-negative integer/);
     expect(() => assertValidToolSchema({ type: ['string', 'null'] })).toThrow(/unsupported JSON Schema type/);
+
+    const sparseEnum = Array(2) as unknown[];
+    sparseEnum[1] = 'safe';
+    expect(() => assertValidToolSchema({ enum: sparseEnum })).toThrow(/JSON-compatible/);
+    const sparseRequired = Array(2) as unknown[];
+    sparseRequired[1] = 'id';
+    expect(() => assertValidToolSchema({ required: sparseRequired })).toThrow(/JSON-compatible/);
   });
 
   it('handles own properties named constructor without prototype lookups', () => {
@@ -62,6 +69,35 @@ describe('tool schema validation', () => {
       required: ['constructor'],
       additionalProperties: false,
     })).not.toThrow();
+  });
+
+  it('rejects undeclared __proto__ properties and counts Unicode code points', () => {
+    const protoInput = JSON.parse('{"__proto__":"unsafe"}') as Record<string, string>;
+    expect(() => validateToolInput(protoInput, {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    })).toThrow(/not allowed/);
+
+    expect(() => validateToolInput({ label: '😀' }, {
+      type: 'object',
+      properties: { label: { type: 'string', minLength: 1, maxLength: 1 } },
+      required: ['label'],
+      additionalProperties: false,
+    })).not.toThrow();
+  });
+
+  it('rejects arrays with custom serialization behavior', () => {
+    const values: unknown[] = ['safe'];
+    Object.defineProperty(values, 'toJSON', {
+      value: () => ['changed'],
+    });
+    expect(() => snapshotToolRegistry([
+      validTool('custom_json'),
+    ].map((candidate) => ({
+      ...candidate,
+      inputSchema: { type: 'string', enum: values },
+    })))).toThrow();
   });
 });
 
@@ -81,6 +117,7 @@ describe('tool registry', () => {
       return this.name;
     };
     const provider = createStaticToolProvider([source]);
+    source.name = 'mutated_source';
     source.title = 'Mutated later';
     source.inputSchema.type = 'string';
     const current = await provider.getTools({ signal: undefined });
@@ -89,5 +126,9 @@ describe('tool registry', () => {
       signal: undefined,
       expectedStateRevision: undefined,
     })).toBe('inspect');
+    const again = await provider.getTools({ signal: undefined });
+    expect(again).toBe(current);
+    expect(Object.isFrozen(current)).toBe(true);
+    expect(Object.isFrozen(current[0]?.inputSchema)).toBe(true);
   });
 });

@@ -1,5 +1,9 @@
 import { AgentRuntimeError } from './errors.js';
-import { isJsonCompatible, isPlainRecord, jsonEquals } from './json.js';
+import {
+  isJsonCompatible,
+  isPlainRecord,
+  jsonEquals,
+} from './json.js';
 import type { JsonObject, JsonSchema } from './types.js';
 
 const MAX_SCHEMA_DEPTH = 16;
@@ -41,6 +45,9 @@ const SUPPORTED_SCHEMA_KEYS = new Set([
 ]);
 
 export function assertValidToolSchema(schema: JsonSchema, path = 'inputSchema'): void {
+  if (!isPlainRecord(schema) || !isJsonCompatible(schema)) {
+    throw invalidTool(`${path} must be a JSON-compatible schema object.`);
+  }
   let serialized: string;
   try {
     serialized = JSON.stringify(schema);
@@ -74,7 +81,8 @@ function validateSchemaDefinition(schema: JsonSchema, path: string, depth: numbe
     throw invalidTool(`${path} uses an unsupported JSON Schema type.`);
   }
   if (schema.enum !== undefined && (
-    !Array.isArray(schema.enum) || !schema.enum.every((entry) => isJsonCompatible(entry))
+    !Array.isArray(schema.enum)
+    || !isJsonCompatible(schema.enum)
   )) {
     throw invalidTool(`${path} has an invalid enum.`);
   }
@@ -92,6 +100,7 @@ function validateSchemaDefinition(schema: JsonSchema, path: string, depth: numbe
 
   if (schema.required !== undefined && (
     !Array.isArray(schema.required)
+    || !isJsonCompatible(schema.required)
     || schema.required.some((entry) => typeof entry !== 'string')
     || new Set(schema.required).size !== schema.required.length
   )) {
@@ -151,7 +160,7 @@ function validateObject(
     if (!Object.hasOwn(value, key)) throw invalidInput(`${path}.${key} is required.`);
   }
   for (const [key, childValue] of Object.entries(value)) {
-    const childSchema = properties[key];
+    const childSchema = Object.hasOwn(properties, key) ? properties[key] : undefined;
     if (isPlainRecord(childSchema)) {
       validateSchemaValue(childValue, childSchema, `${path}.${key}`, depth + 1);
     } else if (schema.additionalProperties === false) {
@@ -175,10 +184,11 @@ function validateArray(value: unknown[], schema: JsonSchema, path: string, depth
 }
 
 function validateString(value: string, schema: JsonSchema, path: string): void {
-  if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
+  const length = Array.from(value).length;
+  if (typeof schema.minLength === 'number' && length < schema.minLength) {
     throw invalidInput(`${path} must contain at least ${schema.minLength} characters.`);
   }
-  if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
+  if (typeof schema.maxLength === 'number' && length > schema.maxLength) {
     throw invalidInput(`${path} must contain at most ${schema.maxLength} characters.`);
   }
 }

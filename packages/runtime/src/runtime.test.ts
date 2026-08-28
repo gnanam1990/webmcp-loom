@@ -257,6 +257,21 @@ describe('runAgentRuntime', () => {
   });
 
   it('bounds stored outputs and errors and normalizes non-JSON output', async () => {
+    const exactOutput = {
+      text: 'quote " slash \\ controls \b\f\n\r\t emoji 😀 lone \ud800',
+      values: [null, true, -0, 1.5],
+    };
+    const exactResult = await runAgentRuntime({
+      goal: 'Inspect.',
+      model: model(call()),
+      toolProvider: createStaticToolProvider([tool({ execute: () => exactOutput })]),
+      maxSteps: 1,
+    });
+    expect(exactResult.history[0]?.output).toEqual({
+      ...exactOutput,
+      values: [null, true, 0, 1.5],
+    });
+
     const large = 'x'.repeat(RUNTIME_LIMITS.storedToolResultCharacters + 500);
     const bigResult = await runAgentRuntime({
       goal: 'Inspect.',
@@ -266,6 +281,28 @@ describe('runAgentRuntime', () => {
     });
     expect(JSON.stringify(bigResult.history[0]?.output).length)
       .toBeLessThanOrEqual(RUNTIME_LIMITS.storedToolResultCharacters);
+
+    let lateGetterRead = false;
+    const boundedBeforeLateGetter: Record<string, unknown> = {
+      large: 'x'.repeat(RUNTIME_LIMITS.storedToolResultCharacters + 500),
+    };
+    Object.defineProperty(boundedBeforeLateGetter, 'late', {
+      enumerable: true,
+      get: () => {
+        lateGetterRead = true;
+        return 'should not be read';
+      },
+    });
+    const boundedResult = await runAgentRuntime({
+      goal: 'Inspect.',
+      model: model(call()),
+      toolProvider: createStaticToolProvider([tool({
+        execute: () => boundedBeforeLateGetter,
+      })]),
+      maxSteps: 1,
+    });
+    expect(boundedResult.history[0]?.output).toMatchObject({ truncated: true });
+    expect(lateGetterRead).toBe(false);
 
     const circular: Record<string, unknown> = {};
     circular.self = circular;
@@ -302,16 +339,20 @@ describe('runAgentRuntime', () => {
     expect(runtimeModel.generate).not.toHaveBeenCalled();
 
     const during = new AbortController();
+    let executionStarted = false;
     const running = runAgentRuntime({
       goal: 'Inspect.',
       model: model(call()),
       toolProvider: createStaticToolProvider([tool({
         execute: async () => new Promise(() => undefined),
       })]),
+      onEvent: (event) => {
+        if (event.type === 'tool_started') executionStarted = true;
+      },
       signal: during.signal,
     });
     await vi.waitFor(() => {
-      expect(during.signal.aborted).toBe(false);
+      expect(executionStarted).toBe(true);
     });
     during.abort();
     await expect(running).resolves.toMatchObject({ status: 'cancelled', history: [] });
@@ -417,6 +458,15 @@ describe('runAgentRuntime', () => {
       toolProvider: createStaticToolProvider([tool()]),
       getStateRevision: () => 'r'.repeat(RUNTIME_LIMITS.stateRevisionCharacters + 1),
     })).rejects.toMatchObject({ code: 'resource_limit' });
+
+    const revisions = [1, 1, 1, Number.NaN];
+    await expect(runAgentRuntime({
+      goal: 'Inspect.',
+      model: model(call()),
+      toolProvider: createStaticToolProvider([tool()]),
+      getStateRevision: () => revisions.shift() ?? 1,
+      maxSteps: 1,
+    })).rejects.toMatchObject({ code: 'invalid_configuration' });
   });
 });
 
@@ -428,5 +478,17 @@ describe('parseAgentDecision', () => {
       .toEqual({ type: 'tool_call', tool: 'inspect', input: {} });
     expect(() => parseAgentDecision('{"type":"final","message":"done","extra":true}'))
       .toThrowError(AgentRuntimeError);
+  });
+
+  it('rejects deeply nested decisions without overflowing the stack', () => {
+    let nested = '{}';
+    for (let depth = 0; depth < 5_000; depth += 1) nested = `{"x":${nested}}`;
+    const raw = `{"type":"tool_call","tool":"inspect","input":${nested}}`;
+    expect(() => parseAgentDecision(raw)).toThrowError(AgentRuntimeError);
+    try {
+      parseAgentDecision(raw);
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'invalid_decision' });
+    }
   });
 });

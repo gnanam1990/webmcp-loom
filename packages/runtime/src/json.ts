@@ -1,23 +1,52 @@
 import { AgentRuntimeError } from './errors.js';
 import type { JsonObject, JsonValue } from './types.js';
 
+const MAX_JSON_COMPATIBILITY_DEPTH = 64;
+
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value) as unknown;
   return prototype === Object.prototype || prototype === null;
 }
 
-export function isJsonCompatible(value: unknown, ancestors = new Set<object>()): value is JsonValue {
+export function isDenseArray(value: readonly unknown[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === value.length
+    && keys.every((key, index) => key === String(index));
+}
+
+export function isJsonCompatible(
+  value: unknown,
+  ancestors = new Set<object>(),
+  depth = 0,
+): value is JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'object') return false;
+  if (depth > MAX_JSON_COMPATIBILITY_DEPTH) return false;
   if (ancestors.has(value)) return false;
-  if (!Array.isArray(value) && !isPlainRecord(value)) return false;
+  try {
+    if (!Array.isArray(value) && !isPlainRecord(value)) return false;
+    const toJson = Object.getOwnPropertyDescriptor(value, 'toJSON');
+    if (toJson !== undefined && (
+      !('value' in toJson) || typeof toJson.value === 'function'
+    )) return false;
+    if (Array.isArray(value) && !isDenseArray(value)) return false;
+  } catch {
+    return false;
+  }
 
   ancestors.add(value);
   try {
-    const children: unknown[] = Array.isArray(value) ? value : Object.values(value);
-    return children.every((child) => isJsonCompatible(child, ancestors));
+    const keys = Object.keys(value);
+    return keys.every((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return descriptor !== undefined
+        && 'value' in descriptor
+        && isJsonCompatible(descriptor.value, ancestors, depth + 1);
+    });
+  } catch {
+    return false;
   } finally {
     ancestors.delete(value);
   }

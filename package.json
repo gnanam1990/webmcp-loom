@@ -14,12 +14,13 @@
   "scripts": {
     "build": "npm run build --workspace @webmcp-loom/runtime",
     "lint": "eslint .",
-    "smoke": "node scripts/runtime-smoke.mjs",
+    "smoke": "npm run build && npm run smoke:built",
+    "smoke:built": "node scripts/runtime-smoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --pretty false",
     "verify:repo": "bash scripts/verify-repo.sh",
-    "verify": "npm run verify:repo && npm run lint && npm run typecheck && npm test && npm run build && npm run smoke && npm audit --audit-level=high"
+    "verify": "npm run verify:repo && npm run lint && npm run typecheck && npm test && npm run build && npm run smoke:built && npm audit --audit-level=high"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

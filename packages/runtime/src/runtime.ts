@@ -161,6 +161,7 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
       throwIfAborted(options.signal);
       emit({ type: 'tool_started', step, toolName: activeTool.name });
       throwIfAborted(options.signal);
+      let output: JsonValue;
       try {
         const execution = Promise.resolve(activeTool.execute(
           cloneJsonObject(validatedInput),
@@ -172,31 +173,7 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
         const rawOutput = activeTool.annotations.readOnlyHint
           ? await raceWithAbort(execution, options.signal)
           : await execution;
-        const output = normalizeToolOutput(rawOutput);
-
-        if (activeTool.annotations.readOnlyHint) {
-          const staleAfterRead = await staleStateResult(
-            stateRevision,
-            options,
-            step,
-            history,
-            events,
-            emit,
-          );
-          if (staleAfterRead !== undefined) return staleAfterRead;
-        }
-        history.push({
-          step,
-          tool: activeTool.name,
-          input: validatedInput,
-          ok: true,
-          output,
-        });
-        emit({ type: 'tool_succeeded', step, toolName: activeTool.name });
-        if (options.signal?.aborted) {
-          emit({ type: 'cancelled', step });
-          return { status: 'cancelled', history, events };
-        }
+        output = normalizeToolOutput(rawOutput);
       } catch (error) {
         if (isCancellation(error) && activeTool.annotations.readOnlyHint) throw error;
         const message = normalizeToolError(error);
@@ -217,6 +194,31 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
             events,
           };
         }
+        continue;
+      }
+
+      if (activeTool.annotations.readOnlyHint) {
+        const staleAfterRead = await staleStateResult(
+          stateRevision,
+          options,
+          step,
+          history,
+          events,
+          emit,
+        );
+        if (staleAfterRead !== undefined) return staleAfterRead;
+      }
+      history.push({
+        step,
+        tool: activeTool.name,
+        input: validatedInput,
+        ok: true,
+        output,
+      });
+      emit({ type: 'tool_succeeded', step, toolName: activeTool.name });
+      if (options.signal?.aborted) {
+        emit({ type: 'cancelled', step });
+        return { status: 'cancelled', history, events };
       }
     }
   } catch (error) {
