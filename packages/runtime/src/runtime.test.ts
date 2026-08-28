@@ -314,6 +314,36 @@ describe('runAgentRuntime', () => {
     });
     expect(circularResult.history[0]?.output).toMatchObject({ unavailable: true });
 
+    const arrayWithExtraProperty = [1] as unknown[] & { extra?: string };
+    arrayWithExtraProperty.extra = 'not JSON array data';
+    const extraPropertyResult = await runAgentRuntime({
+      goal: 'Inspect.',
+      model: model(call()),
+      toolProvider: createStaticToolProvider([tool({
+        execute: () => arrayWithExtraProperty,
+      })]),
+      maxSteps: 1,
+    });
+    expect(extraPropertyResult.history[0]?.output).toMatchObject({ unavailable: true });
+
+    Object.defineProperty(Object.prototype, 'runtimeEnumerablePollution', {
+      configurable: true,
+      enumerable: true,
+      value: 'polluted',
+      writable: true,
+    });
+    try {
+      const pollutedResult = await runAgentRuntime({
+        goal: 'Inspect.',
+        model: model(call()),
+        toolProvider: createStaticToolProvider([tool({ execute: () => ({}) })]),
+        maxSteps: 1,
+      });
+      expect(pollutedResult.history[0]?.output).toMatchObject({ unavailable: true });
+    } finally {
+      Reflect.deleteProperty(Object.prototype, 'runtimeEnumerablePollution');
+    }
+
     const errorResult = await runAgentRuntime({
       goal: 'Inspect.',
       model: model(call()),

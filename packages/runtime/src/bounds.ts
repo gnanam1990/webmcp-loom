@@ -1,4 +1,7 @@
-import { isPlainRecord } from './json.js';
+import {
+  hasUnsafeJsonSerializationHook,
+  isPlainRecord,
+} from './json.js';
 import type { JsonValue } from './types.js';
 
 const MAX_OUTPUT_SERIALIZATION_DEPTH = 64;
@@ -113,12 +116,17 @@ function serializeJsonBounded(
       invalid = true;
       return;
     }
-    const toJson = Object.getOwnPropertyDescriptor(candidate, 'toJSON');
-    if (toJson !== undefined && (
-      !('value' in toJson) || typeof toJson.value === 'function'
-    )) {
+    if (hasUnsafeJsonSerializationHook(candidate)) {
       invalid = true;
       return;
+    }
+    const prototype = Object.getPrototypeOf(candidate) as object | null;
+    if (prototype !== null) {
+      for (const inheritedKey in prototype) {
+        void inheritedKey;
+        invalid = true;
+        return;
+      }
     }
 
     ancestors.add(candidate);
@@ -138,6 +146,19 @@ function serializeJsonBounded(
           }
           visit(descriptor.value, depth + 1);
           if (truncated || invalid) return;
+        }
+        let expectedKey = 0;
+        for (const key in candidate) {
+          if (!Object.hasOwn(candidate, key)) continue;
+          if (key !== String(expectedKey)) {
+            invalid = true;
+            return;
+          }
+          expectedKey += 1;
+        }
+        if (expectedKey !== candidate.length) {
+          invalid = true;
+          return;
         }
         append(']');
         return;

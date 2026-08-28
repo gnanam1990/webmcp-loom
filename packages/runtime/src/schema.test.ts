@@ -98,6 +98,17 @@ describe('tool schema validation', () => {
       ...candidate,
       inputSchema: { type: 'string', enum: values },
     })))).toThrow();
+
+    const inheritedValues: unknown[] = ['safe'];
+    const inheritedPrototype = Object.create(Array.prototype) as object;
+    Object.defineProperty(inheritedPrototype, 'toJSON', {
+      value: () => ['changed'],
+    });
+    Object.setPrototypeOf(inheritedValues, inheritedPrototype);
+    expect(() => snapshotToolRegistry([{
+      ...validTool('inherited_custom_json'),
+      inputSchema: { type: 'string', enum: inheritedValues },
+    }])).toThrow(/JSON-compatible/);
   });
 });
 

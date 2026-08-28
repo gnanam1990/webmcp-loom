@@ -15,6 +15,18 @@ export function isDenseArray(value: readonly unknown[]): boolean {
     && keys.every((key, index) => key === String(index));
 }
 
+export function hasUnsafeJsonSerializationHook(value: object): boolean {
+  let current: object | null = value;
+  while (current !== null) {
+    const descriptor = Object.getOwnPropertyDescriptor(current, 'toJSON');
+    if (descriptor !== undefined) {
+      return !('value' in descriptor) || typeof descriptor.value === 'function';
+    }
+    current = Object.getPrototypeOf(current) as object | null;
+  }
+  return false;
+}
+
 export function isJsonCompatible(
   value: unknown,
   ancestors = new Set<object>(),
@@ -27,10 +39,7 @@ export function isJsonCompatible(
   if (ancestors.has(value)) return false;
   try {
     if (!Array.isArray(value) && !isPlainRecord(value)) return false;
-    const toJson = Object.getOwnPropertyDescriptor(value, 'toJSON');
-    if (toJson !== undefined && (
-      !('value' in toJson) || typeof toJson.value === 'function'
-    )) return false;
+    if (hasUnsafeJsonSerializationHook(value)) return false;
     if (Array.isArray(value) && !isDenseArray(value)) return false;
   } catch {
     return false;
