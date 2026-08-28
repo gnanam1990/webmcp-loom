@@ -2,6 +2,9 @@
   "files": [],
   "references": [
     {
+      "path": "./apps/travel-showcase"
+    },
+    {
       "path": "./packages/runtime"
     }
   ]
