@@ -41,3 +41,6 @@ export interface RuntimeTool {
   origin?: string;
   execute(input: JsonObject, context: RuntimeToolExecuteContext): unknown | Promise<unknown>;
 }
+
+/** A tool as the runtime describes it to an approval surface: metadata without the executor. */
+export type RuntimeToolDescriptor = Omit<RuntimeTool, 'execute'>;

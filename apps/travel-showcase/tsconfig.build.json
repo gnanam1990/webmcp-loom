@@ -11,6 +11,8 @@
     "types": []
   },
   "exclude": [
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "src/app/**",
+    "vite.config.ts"
   ]
 }
