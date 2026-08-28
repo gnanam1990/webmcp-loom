@@ -21,6 +21,15 @@ required_files=(
   docs/verification-standard.md
   .github/pull_request_template.md
   .github/workflows/ci.yml
+  package.json
+  tsconfig.json
+  tsconfig.base.json
+  packages/runtime/package.json
+  packages/runtime/README.md
+  packages/runtime/tsconfig.json
+  packages/runtime/tsconfig.build.json
+  examples/runtime-smoke/index.html
+  examples/runtime-smoke/runtime-smoke.js
 )
 
 for required_file in "${required_files[@]}"; do
