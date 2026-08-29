@@ -243,7 +243,7 @@ describe('store integrity', () => {
       kind: 'activity',
       date: '2026-11-06',
       priceInr: 900,
-      label: 'Seeded',
+      label: 'Akihabara electronics run',
       activityId: 'ac-tok-akihabara',
       cityId: 'tokyo',
     }]);
@@ -259,7 +259,7 @@ describe('store integrity', () => {
       kind: 'activity',
       date: '2026-11-06',
       priceInr: 0,
-      label: 'Human addition',
+      label: 'Fushimi Inari torii climb',
       activityId: 'ac-kyo-fushimi',
       cityId: 'kyoto',
     }]);
@@ -293,6 +293,47 @@ describe('store integrity', () => {
     expect(store.getState()).toMatchObject({ revision: 2, items: [item] });
   });
 
+  it('rejects invalid seeded items before publishing state', () => {
+    expect(() => createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: 'seed-flight',
+      kind: 'flight',
+      date: '2026-11-06',
+      priceInr: 38_500,
+      label: 'Sakura Airways BLR-NRT',
+      flightId: 'fl-blr-nrt-day',
+    }])).toThrow(/departs on 2026-11-05/);
+  });
+
+  it('rejects non-canonical items introduced by a human edit', () => {
+    const store = createTripStore();
+    expect(() => store.editAsHuman((items) => [...items, {
+      id: 'human-activity',
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: -1,
+      label: 'teamLab Planets',
+      activityId: 'ac-tok-teamlab',
+      cityId: 'tokyo',
+    }])).toThrow(/canonical price/);
+    expect(store.getState()).toEqual({
+      revision: 1,
+      constraints: HERO_TRIP_CONSTRAINTS,
+      items: [],
+    });
+  });
+
+  it('rejects generated identifiers that exhaust the safe numeric range', () => {
+    expect(() => createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: `it-${Number.MAX_SAFE_INTEGER}`,
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: 2_400,
+      label: 'teamLab Planets',
+      activityId: 'ac-tok-teamlab',
+      cityId: 'tokyo',
+    }])).toThrow(/supported numeric range/);
+  });
+
   it('freezes items so state cannot change without a revision bump', () => {
     const { store } = storeWithFlight();
     const item = store.getState().items[0] as ItineraryItem;
@@ -310,7 +351,7 @@ describe('store integrity', () => {
       kind: 'activity',
       date: '2026-11-08',
       priceInr: 0,
-      label: 'Human addition',
+      label: 'Fushimi Inari torii climb',
       activityId: 'ac-kyo-fushimi',
       cityId: 'kyoto',
     }]);

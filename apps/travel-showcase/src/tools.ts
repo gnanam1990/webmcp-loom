@@ -47,7 +47,7 @@ function validateExecutorInput(input: JsonObject, schema: Record<string, unknown
   }
 
   for (const [key, value] of Object.entries(input)) {
-    const propertySchema = properties[key];
+    const propertySchema = Object.hasOwn(properties, key) ? properties[key] : undefined;
     if (!isRecord(propertySchema)) {
       if (schema.additionalProperties === false) {
         throw new TravelDomainError('invalid_request', `${key} is not allowed.`);

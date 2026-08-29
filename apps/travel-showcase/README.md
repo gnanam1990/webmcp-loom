@@ -9,9 +9,9 @@ This package is the domain foundation only. There is no user interface yet — t
 - typed trip, itinerary, budget, flight, stay, activity and destination entities;
 - fixed inventory with no clock, network or randomness, so benchmark tasks and live demos see identical data;
 - a shared store whose revision increments on every accepted write;
-- compare-and-swap on agent writes, and unconditional application of human edits;
+- compare-and-swap on agent writes, and revision-free human edits that preserve canonical domain invariants;
 - ten tool definitions with schemas, read/write annotations and deterministic executors;
-- 56 domain tests.
+- 60 domain tests.
 
 ## Shared state and revisions
 

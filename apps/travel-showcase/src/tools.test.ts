@@ -286,4 +286,11 @@ describe('untrusted input reaching the executor directly', () => {
     expect(() => call(tools.get('search_flights'), { surprise: true }))
       .toThrow(/surprise is not allowed/);
   });
+
+  it('rejects inherited schema names supplied as own input properties', () => {
+    const input = JSON.parse('{"__proto__":true}') as JsonObject;
+    expect(Object.hasOwn(input, '__proto__')).toBe(true);
+    expect(() => call(toolsFor(createTripStore()).get('search_flights'), input))
+      .toThrow(/__proto__ is not allowed/);
+  });
 });

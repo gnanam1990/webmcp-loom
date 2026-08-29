@@ -2,7 +2,8 @@
  * Shared trip state.
  *
  * The same store backs the human UI and the agent's tools. Human edits are
- * authoritative and apply unconditionally; agent writes must present the
+ * authoritative and apply without a revision precondition, while still
+ * preserving canonical domain invariants; agent writes must present the
  * revision they were planned against and are rejected if the person changed
  * anything in the meantime. That compare-and-swap is what makes the runtime's
  * optimistic stale-state check meaningful — a preflight read alone cannot make
@@ -50,7 +51,7 @@ export interface TripStore {
   addItem(expectedRevision: number, request: AddItemRequest): ItineraryItem;
   removeItem(expectedRevision: number, itemId: string): ItineraryItem;
   moveItem(expectedRevision: number, itemId: string, toDate: string): ItineraryItem;
-  /** Human edit from the UI. Unconditional, and bumps the revision. */
+  /** Human edit from the UI. No revision check; domain invariants still apply. */
   editAsHuman(change: (items: readonly ItineraryItem[]) => readonly ItineraryItem[]): TripState;
 }
 
@@ -90,6 +91,10 @@ function deepFreezeItem(item: ItineraryItem): ItineraryItem {
   return Object.freeze({ ...item });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function createTripStore(
   inputConstraints: TripConstraints = HERO_TRIP_CONSTRAINTS,
   initialItems: readonly ItineraryItem[] = [],
@@ -114,20 +119,7 @@ export function createTripStore(
     mustKeepCities: Object.freeze([...inputConstraints.mustKeepCities]),
   });
   let revision = 1;
-
-  const freezeItems = (entries: readonly ItineraryItem[]): readonly ItineraryItem[] => {
-    const ids = new Set<string>();
-    const frozen = entries.map((entry) => {
-      if (ids.has(entry.id)) {
-        throw new TravelDomainError('invalid_request', `Duplicate itinerary item id: ${entry.id}.`);
-      }
-      ids.add(entry.id);
-      return deepFreezeItem(entry);
-    });
-    return Object.freeze(frozen);
-  };
-
-  let items: readonly ItineraryItem[] = freezeItems(initialItems);
+  let items: readonly ItineraryItem[] = Object.freeze([]);
 
   /**
    * Derived from the highest generated identifier rather than the item count,
@@ -143,7 +135,7 @@ export function createTripStore(
     return highest;
   };
 
-  let nextItemNumber = highestGeneratedNumber(items) + 1;
+  let nextItemNumber = 1;
 
   const snapshot = (): TripState => Object.freeze({
     revision,
@@ -185,6 +177,123 @@ export function createTripStore(
         `A ${nights}-night stay from ${date} checks out on ${checkout}, past the trip end ${constraints.endDate}.`,
       );
     }
+  };
+
+  const validateItem = (entry: ItineraryItem): void => {
+    if (!isRecord(entry)) {
+      throw new TravelDomainError('invalid_request', 'Itinerary items must be objects.');
+    }
+    const id = entry.id;
+    const kind = entry.kind;
+    const date = entry.date;
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new TravelDomainError('invalid_request', 'Itinerary items require a non-empty id.');
+    }
+    const generated = GENERATED_ID.exec(id);
+    if (generated !== null) {
+      const parsed = Number(generated[1]);
+      if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed >= Number.MAX_SAFE_INTEGER) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Generated itinerary item id is outside the supported numeric range: ${id}.`,
+        );
+      }
+    }
+    if (typeof date !== 'string') {
+      throw new TravelDomainError('invalid_request', 'Itinerary items require a date.');
+    }
+    requireTripDate(date);
+
+    if (kind === 'flight') {
+      const flightId = entry.flightId;
+      if (typeof flightId !== 'string') {
+        throw new TravelDomainError('invalid_request', 'Flight items require a flightId.');
+      }
+      const flight = FLIGHTS.find((candidate) => candidate.id === flightId);
+      if (flight === undefined) {
+        throw new TravelDomainError('not_found', `No flight with id ${flightId}.`);
+      }
+      if (date !== flight.departureDate) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${flight.id} departs on ${flight.departureDate}, not ${date}.`,
+        );
+      }
+      if (constraints.avoidRedEyeFlights && flight.redEye) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${flight.id} is a red-eye departure and this trip avoids them.`,
+        );
+      }
+      const canonicalLabel = `${flight.carrier} ${flight.originCode}-${flight.destinationCode}`;
+      if (entry.priceInr !== flight.priceInr) {
+        throw new TravelDomainError('invalid_request', `Flight ${flight.id} must use its canonical price.`);
+      }
+      if (entry.label !== canonicalLabel) {
+        throw new TravelDomainError('invalid_request', `Flight ${flight.id} must use its canonical label.`);
+      }
+      return;
+    }
+
+    if (kind === 'stay') {
+      const stayId = entry.stayId;
+      if (typeof stayId !== 'string') {
+        throw new TravelDomainError('invalid_request', 'Stay items require a stayId.');
+      }
+      const stay = STAYS.find((candidate) => candidate.id === stayId);
+      if (stay === undefined) {
+        throw new TravelDomainError('not_found', `No stay with id ${stayId}.`);
+      }
+      requireStaySpan(date, entry.nights);
+      const canonicalPrice = stay.pricePerNightInr * entry.nights;
+      const canonicalLabel = `${stay.name} x${entry.nights} nights`;
+      if (entry.cityId !== stay.cityId) {
+        throw new TravelDomainError('invalid_request', `Stay ${stay.id} must use its canonical city.`);
+      }
+      if (entry.priceInr !== canonicalPrice) {
+        throw new TravelDomainError('invalid_request', `Stay ${stay.id} must use its canonical price.`);
+      }
+      if (entry.label !== canonicalLabel) {
+        throw new TravelDomainError('invalid_request', `Stay ${stay.id} must use its canonical label.`);
+      }
+      return;
+    }
+
+    if (kind === 'activity') {
+      const activityId = entry.activityId;
+      if (typeof activityId !== 'string') {
+        throw new TravelDomainError('invalid_request', 'Activity items require an activityId.');
+      }
+      const activity = ACTIVITIES.find((candidate) => candidate.id === activityId);
+      if (activity === undefined) {
+        throw new TravelDomainError('not_found', `No activity with id ${activityId}.`);
+      }
+      if (entry.cityId !== activity.cityId) {
+        throw new TravelDomainError('invalid_request', `Activity ${activity.id} must use its canonical city.`);
+      }
+      if (entry.priceInr !== activity.priceInr) {
+        throw new TravelDomainError('invalid_request', `Activity ${activity.id} must use its canonical price.`);
+      }
+      if (entry.label !== activity.name) {
+        throw new TravelDomainError('invalid_request', `Activity ${activity.id} must use its canonical label.`);
+      }
+      return;
+    }
+
+    throw new TravelDomainError('invalid_request', `Unknown itinerary item kind: ${String(kind)}.`);
+  };
+
+  const freezeItems = (entries: readonly ItineraryItem[]): readonly ItineraryItem[] => {
+    const ids = new Set<string>();
+    const frozen = entries.map((entry) => {
+      validateItem(entry);
+      if (ids.has(entry.id)) {
+        throw new TravelDomainError('invalid_request', `Duplicate itinerary item id: ${entry.id}.`);
+      }
+      ids.add(entry.id);
+      return deepFreezeItem(entry);
+    });
+    return Object.freeze(frozen);
   };
 
   const findItem = (itemId: string): ItineraryItem => {
@@ -266,6 +375,9 @@ export function createTripStore(
     revision += 1;
   };
 
+  items = freezeItems(initialItems);
+  nextItemNumber = highestGeneratedNumber(items) + 1;
+
   return {
     getState: snapshot,
 
@@ -288,7 +400,6 @@ export function createTripStore(
     addItem: (expectedRevision, request) => {
       requireFresh(expectedRevision);
       const item = buildItem(request);
-      nextItemNumber += 1;
       commit([...items, item]);
       return item;
     },
