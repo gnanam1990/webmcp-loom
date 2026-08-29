@@ -57,26 +57,77 @@ export interface TripStore {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const GENERATED_ID = /^it-(\d+)$/;
 const MILLISECONDS_PER_DAY = 86_400_000;
+const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
+
+function calendarTimestamp(isoDate: string): number {
+  if (typeof isoDate !== 'string' || !ISO_DATE.test(isoDate)) {
+    throw new TravelDomainError('invalid_request', `Date must be an ISO YYYY-MM-DD value: ${isoDate}`);
+  }
+  const parsed = Date.parse(`${isoDate}T00:00:00Z`);
+  if (
+    !Number.isFinite(parsed)
+    || new Date(parsed).toISOString().slice(0, 10) !== isoDate
+  ) {
+    throw new TravelDomainError('invalid_request', `Date is not a real calendar day: ${isoDate}`);
+  }
+  return parsed;
+}
 
 /** Adds whole days to an ISO date without touching local time zone rules. */
 function addDays(isoDate: string, days: number): string {
-  const parsed = Date.parse(`${isoDate}T00:00:00Z`);
-  if (Number.isNaN(parsed)) {
-    throw new TravelDomainError('invalid_request', `Date is not a real calendar day: ${isoDate}`);
+  const parsed = calendarTimestamp(isoDate);
+  const result = parsed + days * MILLISECONDS_PER_DAY;
+  if (!Number.isFinite(result) || Math.abs(result) > MAX_DATE_TIMESTAMP) {
+    throw new TravelDomainError(
+      'invalid_request',
+      `Date span is outside the supported calendar range: ${isoDate} plus ${days} days.`,
+    );
   }
-  return new Date(parsed + days * MILLISECONDS_PER_DAY).toISOString().slice(0, 10);
+  return new Date(result).toISOString().slice(0, 10);
 }
 
 function deepFreezeItem(item: ItineraryItem): ItineraryItem {
-  return Object.freeze(item);
+  return Object.freeze({ ...item });
 }
 
 export function createTripStore(
-  constraints: TripConstraints = HERO_TRIP_CONSTRAINTS,
+  inputConstraints: TripConstraints = HERO_TRIP_CONSTRAINTS,
   initialItems: readonly ItineraryItem[] = [],
 ): TripStore {
+  const startTimestamp = calendarTimestamp(inputConstraints.startDate);
+  const endTimestamp = calendarTimestamp(inputConstraints.endDate);
+  if (endTimestamp < startTimestamp) {
+    throw new TravelDomainError('invalid_request', 'Trip endDate must not be before startDate.');
+  }
+  const inclusiveDays = ((endTimestamp - startTimestamp) / MILLISECONDS_PER_DAY) + 1;
+  if (!Number.isSafeInteger(inputConstraints.totalDays) || inputConstraints.totalDays !== inclusiveDays) {
+    throw new TravelDomainError(
+      'invalid_request',
+      `totalDays must match the inclusive trip window (${inclusiveDays}).`,
+    );
+  }
+  if (!Array.isArray(inputConstraints.mustKeepCities)) {
+    throw new TravelDomainError('invalid_request', 'mustKeepCities must be an array.');
+  }
+  const constraints: TripConstraints = Object.freeze({
+    ...inputConstraints,
+    mustKeepCities: Object.freeze([...inputConstraints.mustKeepCities]),
+  });
   let revision = 1;
-  let items: readonly ItineraryItem[] = Object.freeze(initialItems.map(deepFreezeItem));
+
+  const freezeItems = (entries: readonly ItineraryItem[]): readonly ItineraryItem[] => {
+    const ids = new Set<string>();
+    const frozen = entries.map((entry) => {
+      if (ids.has(entry.id)) {
+        throw new TravelDomainError('invalid_request', `Duplicate itinerary item id: ${entry.id}.`);
+      }
+      ids.add(entry.id);
+      return deepFreezeItem(entry);
+    });
+    return Object.freeze(frozen);
+  };
+
+  let items: readonly ItineraryItem[] = freezeItems(initialItems);
 
   /**
    * Derived from the highest generated identifier rather than the item count,
@@ -113,9 +164,7 @@ export function createTripStore(
   };
 
   const requireTripDate = (date: string): void => {
-    if (typeof date !== 'string' || !ISO_DATE.test(date)) {
-      throw new TravelDomainError('invalid_request', `Date must be an ISO YYYY-MM-DD value: ${date}`);
-    }
+    calendarTimestamp(date);
     if (date < constraints.startDate || date > constraints.endDate) {
       throw new TravelDomainError(
         'invalid_request',
@@ -212,7 +261,8 @@ export function createTripStore(
   };
 
   const commit = (next: readonly ItineraryItem[]): void => {
-    items = Object.freeze(next.map(deepFreezeItem));
+    items = freezeItems(next);
+    nextItemNumber = Math.max(nextItemNumber, highestGeneratedNumber(items) + 1);
     revision += 1;
   };
 
