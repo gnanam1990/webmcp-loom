@@ -293,4 +293,10 @@ describe('untrusted input reaching the executor directly', () => {
     expect(() => call(toolsFor(createTripStore()).get('search_flights'), input))
       .toThrow(/__proto__ is not allowed/);
   });
+
+  it('rejects class instances instead of treating them as JSON objects', () => {
+    const input = new Date() as unknown as JsonObject;
+    expect(() => call(toolsFor(createTripStore()).get('get_trip_constraints'), input))
+      .toThrow(/Tool input must be an object/);
+  });
 });

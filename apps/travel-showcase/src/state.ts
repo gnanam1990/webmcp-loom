@@ -84,7 +84,14 @@ function addDays(isoDate: string, days: number): string {
       `Date span is outside the supported calendar range: ${isoDate} plus ${days} days.`,
     );
   }
-  return new Date(result).toISOString().slice(0, 10);
+  const formatted = new Date(result).toISOString().slice(0, 10);
+  if (!ISO_DATE.test(formatted)) {
+    throw new TravelDomainError(
+      'invalid_request',
+      `Date span is outside the supported calendar range: ${isoDate} plus ${days} days.`,
+    );
+  }
+  return formatted;
 }
 
 function deepFreezeItem(item: ItineraryItem): ItineraryItem {
@@ -306,6 +313,9 @@ export function createTripStore(
 
   const buildItem = (request: AddItemRequest): ItineraryItem => {
     requireTripDate(request.date);
+    if (!Number.isSafeInteger(nextItemNumber) || nextItemNumber >= Number.MAX_SAFE_INTEGER) {
+      throw new TravelDomainError('invalid_request', 'The itinerary identifier sequence is exhausted.');
+    }
     const id = `it-${nextItemNumber}`;
 
     if (request.kind === 'flight') {

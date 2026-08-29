@@ -117,6 +117,21 @@ describe('trip store validation', () => {
     })).toThrow(TravelDomainError);
   });
 
+  it('rejects a checkout that would require an extended-year date', () => {
+    const store = createTripStore({
+      ...HERO_TRIP_CONSTRAINTS,
+      startDate: '9999-12-31',
+      endDate: '9999-12-31',
+      totalDays: 1,
+    });
+    expect(() => store.addItem(1, {
+      kind: 'stay',
+      stayId: 'st-tok-mid',
+      date: '9999-12-31',
+      nights: 1,
+    })).toThrow(/outside the supported calendar range/);
+  });
+
   it('reports a missing itinerary item rather than silently succeeding', () => {
     const { store } = storeWithFlight();
     expect(() => store.removeItem(2, 'it-999')).toThrow(/No itinerary item with id it-999/);
@@ -332,6 +347,25 @@ describe('store integrity', () => {
       activityId: 'ac-tok-teamlab',
       cityId: 'tokyo',
     }])).toThrow(/supported numeric range/);
+  });
+
+  it('reports identifier exhaustion before attempting an add', () => {
+    const lastUsable = Number.MAX_SAFE_INTEGER - 1;
+    const store = createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: `it-${lastUsable}`,
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: 2_400,
+      label: 'teamLab Planets',
+      activityId: 'ac-tok-teamlab',
+      cityId: 'tokyo',
+    }]);
+    expect(() => store.addItem(1, {
+      kind: 'activity',
+      activityId: 'ac-kyo-fushimi',
+      date: '2026-11-07',
+    })).toThrow(/identifier sequence is exhausted/);
+    expect(store.getState()).toMatchObject({ revision: 1, items: [{ id: `it-${lastUsable}` }] });
   });
 
   it('freezes items so state cannot change without a revision bump', () => {
