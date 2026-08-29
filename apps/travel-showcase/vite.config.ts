@@ -1,6 +1,27 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+
+interface RuntimeSourceConfig {
+  readonly compilerOptions?: {
+    readonly paths?: Record<string, readonly string[]>;
+  };
+}
+
+const runtimeSourceConfig = JSON.parse(readFileSync(
+  new URL('./tsconfig.runtime-source.json', import.meta.url),
+  'utf8',
+)) as RuntimeSourceConfig;
+const runtimeAliases = Object.entries(runtimeSourceConfig.compilerOptions?.paths ?? {});
+if (runtimeAliases.length !== 1) {
+  throw new Error('Expected exactly one runtime source alias.');
+}
+const runtimeAlias = runtimeAliases[0];
+if (runtimeAlias === undefined || runtimeAlias[1].length !== 1 || runtimeAlias[1][0] === undefined) {
+  throw new Error('Expected the runtime source alias to have exactly one target.');
+}
+const [runtimePackageName, [runtimeSourcePath]] = runtimeAlias;
 
 /**
  * The showcase bundles the runtime from source for the same reason the tests
@@ -16,9 +37,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@webmcp-loom/runtime': fileURLToPath(
-        new URL('../../packages/runtime/src/index.ts', import.meta.url),
-      ),
+      [runtimePackageName]: fileURLToPath(new URL(runtimeSourcePath, import.meta.url)),
     },
   },
   build: {

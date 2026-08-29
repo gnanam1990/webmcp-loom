@@ -1,5 +1,8 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": [
+    "../../tsconfig.base.json",
+    "./tsconfig.runtime-source.json"
+  ],
   "compilerOptions": {
     "noEmit": true,
     "types": [
@@ -7,12 +10,7 @@
       "vitest/globals",
       "vite/client"
     ],
-    "jsx": "react-jsx",
-    "paths": {
-      "@webmcp-loom/runtime": [
-        "../../packages/runtime/src/index.ts"
-      ]
-    }
+    "jsx": "react-jsx"
   },
   "include": [
     "src/**/*.ts",

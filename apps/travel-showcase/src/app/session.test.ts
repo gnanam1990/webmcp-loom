@@ -53,7 +53,7 @@ describe('collaboration session', () => {
       && snapshot.trace.some((line) => (
         line.step === 3
         && line.toolName === 'add_itinerary_item'
-        && line.state === 'running'
+        && line.state !== 'succeeded'
       ))
     ))).toBe(false);
     expect(observed.some((snapshot) => (
