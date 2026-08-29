@@ -21,6 +21,84 @@ import type { JsonObject, RuntimeTool, RuntimeToolExecuteContext } from './runti
 const CITY_IDS: readonly CityId[] = ['hakone', 'kyoto', 'nara', 'osaka', 'tokyo'];
 const ACTIVITY_TAGS: readonly ActivityTag[] = ['culture', 'food', 'nature', 'nightlife', 'shopping'];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  try {
+    const prototype = Object.getPrototypeOf(value) as unknown;
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * WebMCP calls the page-owned executor directly, so validate each executor
+ * input against the same flat schema advertised to callers. This keeps the
+ * schema and direct-call boundary in lockstep without duplicating every
+ * optional-filter check inside individual tools.
+ */
+function validateExecutorInput(input: JsonObject, schema: Record<string, unknown>): void {
+  if (!isRecord(input)) {
+    throw new TravelDomainError('invalid_request', 'Tool input must be an object.');
+  }
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((key): key is string => typeof key === 'string')
+    : [];
+
+  for (const key of required) {
+    if (!Object.hasOwn(input, key)) {
+      throw new TravelDomainError('invalid_request', `${key} is required.`);
+    }
+  }
+
+  for (const [key, value] of Object.entries(input)) {
+    const propertySchema = Object.hasOwn(properties, key) ? properties[key] : undefined;
+    if (!isRecord(propertySchema)) {
+      if (schema.additionalProperties === false) {
+        throw new TravelDomainError('invalid_request', `${key} is not allowed.`);
+      }
+      continue;
+    }
+    validateExecutorValue(key, value, propertySchema);
+  }
+}
+
+function validateExecutorValue(key: string, value: unknown, schema: Record<string, unknown>): void {
+  const type = schema.type;
+  const matchesType = type === 'integer'
+    ? typeof value === 'number' && Number.isInteger(value)
+    : type === 'number'
+      ? typeof value === 'number' && Number.isFinite(value)
+      : type === undefined || typeof value === type;
+  if (!matchesType) {
+    throw new TravelDomainError('invalid_request', `${key} must be ${String(type)}.`);
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    throw new TravelDomainError('invalid_request', `${key} must be finite.`);
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.some((candidate) => Object.is(candidate, value))) {
+    throw new TravelDomainError('invalid_request', `${key} must match an allowed value.`);
+  }
+  if (typeof value === 'string') {
+    const length = Array.from(value).length;
+    if (typeof schema.minLength === 'number' && length < schema.minLength) {
+      throw new TravelDomainError('invalid_request', `${key} is too short.`);
+    }
+    if (typeof schema.maxLength === 'number' && length > schema.maxLength) {
+      throw new TravelDomainError('invalid_request', `${key} is too long.`);
+    }
+  }
+  if (typeof value === 'number') {
+    if (typeof schema.minimum === 'number' && value < schema.minimum) {
+      throw new TravelDomainError('invalid_request', `${key} must be at least ${schema.minimum}.`);
+    }
+    if (typeof schema.maximum === 'number' && value > schema.maximum) {
+      throw new TravelDomainError('invalid_request', `${key} must be at most ${schema.maximum}.`);
+    }
+  }
+}
+
 function readString(input: JsonObject, key: string): string | undefined {
   const value = input[key];
   return typeof value === 'string' ? value : undefined;
@@ -79,7 +157,7 @@ function requireExpectedRevision(input: JsonObject, context: RuntimeToolExecuteC
 }
 
 export function createTravelTools(store: TripStore): RuntimeTool[] {
-  return [
+  const tools: RuntimeTool[] = [
     {
       name: 'get_trip_constraints',
       title: 'Get trip constraints',
@@ -299,4 +377,15 @@ export function createTravelTools(store: TripStore): RuntimeTool[] {
       },
     },
   ];
+  return tools.map((tool) => {
+    const execute = tool.execute;
+    return {
+      ...tool,
+      execute: (input, context) => {
+        const normalizedInput = input === undefined ? {} : input;
+        validateExecutorInput(normalizedInput, tool.inputSchema);
+        return execute(normalizedInput, context);
+      },
+    };
+  });
 }

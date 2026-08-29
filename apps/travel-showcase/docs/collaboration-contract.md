@@ -122,7 +122,7 @@ Two layouts, one breakpoint.
 
 **Narrow.** Single column: goal, budget summary, board, trace collapsed behind a control. Approval becomes a bottom sheet. The board remains the tallest region — the trace must not dominate the small viewport.
 
-Touch targets are at least 44px. The remove, move and undo controls on an itinerary item must not sit close enough to be mis-tapped. Undo is the most costly of the three to hit by accident, since it discards work, so it does not sit adjacent to the others.
+Touch targets are at least 44px. The remove and move controls on an itinerary item must not sit close enough to be mis-tapped. The single-step undo is a global last-action control, not a per-item control; it stays visually separate from item actions and its label names the exact action it will reverse.
 
 The backend indicator stays visible in both layouts. It may shorten — "Local · Qwen 1.5B" to "Local" — but it never collapses into the trace or behind a menu, because a claim the person has to go looking for is not a visible claim. Its loading and failed states keep their full text at every width.
 

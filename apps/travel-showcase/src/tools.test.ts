@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTripStore } from './state.js';
+import { TravelDomainError, createTripStore } from './state.js';
 import { createTravelTools } from './tools.js';
 import type { JsonObject, RuntimeTool, RuntimeToolExecuteContext } from './runtime-contract.js';
 import type { TripStore } from './state.js';
@@ -215,7 +215,7 @@ describe('write tools', () => {
       const input: JsonObject = { kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' };
       if (expectedRevision !== undefined) input.expectedRevision = expectedRevision as never;
       expect(() => call(toolsFor(store).get('add_itinerary_item'), input))
-        .toThrow(/expectedRevision is required and must be an integer/);
+        .toThrow(/expectedRevision (?:is required|must be integer)/);
     }
   });
 
@@ -232,7 +232,7 @@ describe('untrusted input reaching the executor directly', () => {
     const store = createTripStore();
     expect(() => call(toolsFor(store).get('add_itinerary_item'), {
       expectedRevision: 1, kind: 'hotel', refId: 'st-tok-mid', date: '2026-11-05', nights: 2,
-    }, 1)).toThrow(/Unknown itinerary kind: hotel/);
+    }, 1)).toThrow(/kind must match an allowed value/);
     expect(store.getState().items).toEqual([]);
   });
 
@@ -259,5 +259,52 @@ describe('untrusted input reaching the executor directly', () => {
     expect(() => call(toolsFor(store).get('add_itinerary_item'), {
       expectedRevision: 1, kind: 'flight', refId: 'fl-blr-nrt-redeye', date: '2026-11-05',
     }, 1)).toThrow(/red-eye departure/);
+  });
+
+  it('rejects wrong-typed optional filters instead of silently dropping them', () => {
+    const tools = toolsFor(createTripStore());
+    const cases: Array<[string, JsonObject]> = [
+      ['search_flights', { originCode: 123 } as unknown as JsonObject],
+      ['search_flights', { maxPriceInr: '40000' } as unknown as JsonObject],
+      ['search_flights', { excludeRedEye: 'yes' } as unknown as JsonObject],
+      ['search_stays', { cityId: 'kyoto', maxPricePerNightInr: false } as unknown as JsonObject],
+      ['search_activities', { cityId: 'kyoto', tag: 1 } as unknown as JsonObject],
+    ];
+    for (const [name, input] of cases) {
+      expect(() => call(tools.get(name), input), name).toThrow(TravelDomainError);
+    }
+  });
+
+  it('enforces enum, numeric-bound and additional-property schema rules', () => {
+    const tools = toolsFor(createTripStore());
+    expect(() => call(tools.get('search_stays'), { cityId: 'moon' }))
+      .toThrow(/must match an allowed value/);
+    expect(() => call(tools.get('search_flights'), { maxPriceInr: -1 }))
+      .toThrow(/must be at least 0/);
+    expect(() => call(tools.get('search_flights'), { maxPriceInr: 1.5 }))
+      .toThrow(/must be integer/);
+    expect(() => call(tools.get('search_flights'), { surprise: true }))
+      .toThrow(/surprise is not allowed/);
+  });
+
+  it('rejects inherited schema names supplied as own input properties', () => {
+    const input = JSON.parse('{"__proto__":true}') as JsonObject;
+    expect(Object.hasOwn(input, '__proto__')).toBe(true);
+    expect(() => call(toolsFor(createTripStore()).get('search_flights'), input))
+      .toThrow(/__proto__ is not allowed/);
+  });
+
+  it('rejects class instances instead of treating them as JSON objects', () => {
+    const input = new Date() as unknown as JsonObject;
+    expect(() => call(toolsFor(createTripStore()).get('get_trip_constraints'), input))
+      .toThrow(/Tool input must be an object/);
+  });
+
+  it('normalizes omitted input only for tools whose schema permits an empty object', () => {
+    const tools = toolsFor(createTripStore());
+    const omitted = undefined as unknown as JsonObject;
+    expect(call(tools.get('get_trip_constraints'), omitted)).toMatchObject({ revision: 1 });
+    expect(() => call(tools.get('add_itinerary_item'), omitted))
+      .toThrow(/expectedRevision is required/);
   });
 });

@@ -85,12 +85,51 @@ describe('trip store validation', () => {
       .toThrow(/ISO YYYY-MM-DD/);
   });
 
+  it('rejects impossible calendar days even when they are lexically inside the trip window', () => {
+    const store = createTripStore({
+      ...HERO_TRIP_CONSTRAINTS,
+      startDate: '2026-02-28',
+      endDate: '2026-03-02',
+      totalDays: 3,
+    });
+    expect(() => store.addItem(1, {
+      kind: 'activity',
+      activityId: 'ac-tok-teamlab',
+      date: '2026-02-30',
+    })).toThrow(/not a real calendar day/);
+  });
+
   it('requires a positive integer night count for stays', () => {
     const store = createTripStore();
     expect(() => store.addItem(1, { kind: 'stay', stayId: 'st-tok-mid', date: '2026-11-05', nights: 0 }))
       .toThrow(/at least 1/);
     expect(() => store.addItem(1, { kind: 'stay', stayId: 'st-tok-mid', date: '2026-11-05', nights: 2.5 }))
       .toThrow(/at least 1/);
+  });
+
+  it('reports an out-of-range stay span as a domain validation error', () => {
+    const store = createTripStore();
+    expect(() => store.addItem(1, {
+      kind: 'stay',
+      stayId: 'st-tok-mid',
+      date: '2026-11-05',
+      nights: Number.MAX_SAFE_INTEGER,
+    })).toThrow(TravelDomainError);
+  });
+
+  it('rejects a checkout that would require an extended-year date', () => {
+    const store = createTripStore({
+      ...HERO_TRIP_CONSTRAINTS,
+      startDate: '9999-12-31',
+      endDate: '9999-12-31',
+      totalDays: 1,
+    });
+    expect(() => store.addItem(1, {
+      kind: 'stay',
+      stayId: 'st-tok-mid',
+      date: '9999-12-31',
+      nights: 1,
+    })).toThrow(/outside the supported calendar range/);
   });
 
   it('reports a missing itinerary item rather than silently succeeding', () => {
@@ -219,13 +258,122 @@ describe('store integrity', () => {
       kind: 'activity',
       date: '2026-11-06',
       priceInr: 900,
-      label: 'Seeded',
+      label: 'Akihabara electronics run',
       activityId: 'ac-tok-akihabara',
       cityId: 'tokyo',
     }]);
     const added = seeded.addItem(1, { kind: 'activity', activityId: 'ac-tok-teamlab', date: '2026-11-07' });
     expect(added.id).toBe('it-8');
     expect(new Set(seeded.getState().items.map((item) => item.id)).size).toBe(2);
+  });
+
+  it('never reissues an identifier introduced by a human edit', () => {
+    const store = createTripStore();
+    store.editAsHuman((items) => [...items, {
+      id: 'it-1',
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: 0,
+      label: 'Fushimi Inari torii climb',
+      activityId: 'ac-kyo-fushimi',
+      cityId: 'kyoto',
+    }]);
+    const added = store.addItem(2, {
+      kind: 'activity',
+      activityId: 'ac-tok-teamlab',
+      date: '2026-11-07',
+    });
+    expect(added.id).toBe('it-2');
+  });
+
+  it('clones and freezes custom constraints at construction', () => {
+    const constraints = {
+      ...HERO_TRIP_CONSTRAINTS,
+      mustKeepCities: [...HERO_TRIP_CONSTRAINTS.mustKeepCities],
+    };
+    const store = createTripStore(constraints);
+    constraints.budgetInr = 1;
+    constraints.mustKeepCities.length = 0;
+    const stored = store.getState().constraints;
+    expect(stored.budgetInr).toBe(150_000);
+    expect(stored.mustKeepCities).toEqual(['tokyo', 'kyoto']);
+    expect(Object.isFrozen(stored)).toBe(true);
+    expect(Object.isFrozen(stored.mustKeepCities)).toBe(true);
+  });
+
+  it('rejects duplicate identifiers introduced by a human edit', () => {
+    const { store, item } = storeWithFlight();
+    expect(() => store.editAsHuman((items) => [...items, { ...item }]))
+      .toThrow(/Duplicate itinerary item id/);
+    expect(store.getState()).toMatchObject({ revision: 2, items: [item] });
+  });
+
+  it('rejects sparse human edits atomically', () => {
+    const { store, item } = storeWithFlight();
+    const sparse = new Array<ItineraryItem>(1);
+    expect(() => store.editAsHuman(() => sparse)).toThrow(TravelDomainError);
+    expect(store.getState()).toMatchObject({ revision: 2, items: [item] });
+    expect(store.getBudgetSummary().committedInr).toBe(38_500);
+  });
+
+  it('rejects invalid seeded items before publishing state', () => {
+    expect(() => createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: 'seed-flight',
+      kind: 'flight',
+      date: '2026-11-06',
+      priceInr: 38_500,
+      label: 'Sakura Airways BLR-NRT',
+      flightId: 'fl-blr-nrt-day',
+    }])).toThrow(/departs on 2026-11-05/);
+  });
+
+  it('rejects non-canonical items introduced by a human edit', () => {
+    const store = createTripStore();
+    expect(() => store.editAsHuman((items) => [...items, {
+      id: 'human-activity',
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: -1,
+      label: 'teamLab Planets',
+      activityId: 'ac-tok-teamlab',
+      cityId: 'tokyo',
+    }])).toThrow(/canonical price/);
+    expect(store.getState()).toEqual({
+      revision: 1,
+      constraints: HERO_TRIP_CONSTRAINTS,
+      items: [],
+    });
+  });
+
+  it('rejects generated identifiers that exhaust the safe numeric range', () => {
+    expect(() => createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: `it-${Number.MAX_SAFE_INTEGER}`,
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: 2_400,
+      label: 'teamLab Planets',
+      activityId: 'ac-tok-teamlab',
+      cityId: 'tokyo',
+    }])).toThrow(/supported numeric range/);
+  });
+
+  it('reports identifier exhaustion before attempting an add', () => {
+    const lastUsable = Number.MAX_SAFE_INTEGER - 1;
+    const store = createTripStore(HERO_TRIP_CONSTRAINTS, [{
+      id: `it-${lastUsable}`,
+      kind: 'activity',
+      date: '2026-11-06',
+      priceInr: 2_400,
+      label: 'teamLab Planets',
+      activityId: 'ac-tok-teamlab',
+      cityId: 'tokyo',
+    }]);
+    expect(() => store.addItem(1, {
+      kind: 'activity',
+      activityId: 'ac-kyo-fushimi',
+      date: '2026-11-07',
+    })).toThrow(/identifier sequence is exhausted/);
+    expect(store.getState()).toMatchObject({ revision: 1, items: [{ id: `it-${lastUsable}` }] });
   });
 
   it('freezes items so state cannot change without a revision bump', () => {
@@ -245,7 +393,7 @@ describe('store integrity', () => {
       kind: 'activity',
       date: '2026-11-08',
       priceInr: 0,
-      label: 'Human addition',
+      label: 'Fushimi Inari torii climb',
       activityId: 'ac-kyo-fushimi',
       cityId: 'kyoto',
     }]);

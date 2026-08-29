@@ -2,7 +2,8 @@
  * Shared trip state.
  *
  * The same store backs the human UI and the agent's tools. Human edits are
- * authoritative and apply unconditionally; agent writes must present the
+ * authoritative and apply without a revision precondition, while still
+ * preserving canonical domain invariants; agent writes must present the
  * revision they were planned against and are rejected if the person changed
  * anything in the meantime. That compare-and-swap is what makes the runtime's
  * optimistic stale-state check meaningful — a preflight read alone cannot make
@@ -50,33 +51,82 @@ export interface TripStore {
   addItem(expectedRevision: number, request: AddItemRequest): ItineraryItem;
   removeItem(expectedRevision: number, itemId: string): ItineraryItem;
   moveItem(expectedRevision: number, itemId: string, toDate: string): ItineraryItem;
-  /** Human edit from the UI. Unconditional, and bumps the revision. */
+  /** Human edit from the UI. No revision check; domain invariants still apply. */
   editAsHuman(change: (items: readonly ItineraryItem[]) => readonly ItineraryItem[]): TripState;
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const GENERATED_ID = /^it-(\d+)$/;
 const MILLISECONDS_PER_DAY = 86_400_000;
+const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
+
+function calendarTimestamp(isoDate: string): number {
+  if (typeof isoDate !== 'string' || !ISO_DATE.test(isoDate)) {
+    throw new TravelDomainError('invalid_request', `Date must be an ISO YYYY-MM-DD value: ${isoDate}`);
+  }
+  const parsed = Date.parse(`${isoDate}T00:00:00Z`);
+  if (
+    !Number.isFinite(parsed)
+    || new Date(parsed).toISOString().slice(0, 10) !== isoDate
+  ) {
+    throw new TravelDomainError('invalid_request', `Date is not a real calendar day: ${isoDate}`);
+  }
+  return parsed;
+}
 
 /** Adds whole days to an ISO date without touching local time zone rules. */
 function addDays(isoDate: string, days: number): string {
-  const parsed = Date.parse(`${isoDate}T00:00:00Z`);
-  if (Number.isNaN(parsed)) {
-    throw new TravelDomainError('invalid_request', `Date is not a real calendar day: ${isoDate}`);
+  const parsed = calendarTimestamp(isoDate);
+  const result = parsed + days * MILLISECONDS_PER_DAY;
+  if (!Number.isFinite(result) || Math.abs(result) > MAX_DATE_TIMESTAMP) {
+    throw new TravelDomainError(
+      'invalid_request',
+      `Date span is outside the supported calendar range: ${isoDate} plus ${days} days.`,
+    );
   }
-  return new Date(parsed + days * MILLISECONDS_PER_DAY).toISOString().slice(0, 10);
+  const formatted = new Date(result).toISOString().slice(0, 10);
+  if (!ISO_DATE.test(formatted)) {
+    throw new TravelDomainError(
+      'invalid_request',
+      `Date span is outside the supported calendar range: ${isoDate} plus ${days} days.`,
+    );
+  }
+  return formatted;
 }
 
 function deepFreezeItem(item: ItineraryItem): ItineraryItem {
-  return Object.freeze(item);
+  return Object.freeze({ ...item });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function createTripStore(
-  constraints: TripConstraints = HERO_TRIP_CONSTRAINTS,
+  inputConstraints: TripConstraints = HERO_TRIP_CONSTRAINTS,
   initialItems: readonly ItineraryItem[] = [],
 ): TripStore {
+  const startTimestamp = calendarTimestamp(inputConstraints.startDate);
+  const endTimestamp = calendarTimestamp(inputConstraints.endDate);
+  if (endTimestamp < startTimestamp) {
+    throw new TravelDomainError('invalid_request', 'Trip endDate must not be before startDate.');
+  }
+  const inclusiveDays = ((endTimestamp - startTimestamp) / MILLISECONDS_PER_DAY) + 1;
+  if (!Number.isSafeInteger(inputConstraints.totalDays) || inputConstraints.totalDays !== inclusiveDays) {
+    throw new TravelDomainError(
+      'invalid_request',
+      `totalDays must match the inclusive trip window (${inclusiveDays}).`,
+    );
+  }
+  if (!Array.isArray(inputConstraints.mustKeepCities)) {
+    throw new TravelDomainError('invalid_request', 'mustKeepCities must be an array.');
+  }
+  const constraints: TripConstraints = Object.freeze({
+    ...inputConstraints,
+    mustKeepCities: Object.freeze([...inputConstraints.mustKeepCities]),
+  });
   let revision = 1;
-  let items: readonly ItineraryItem[] = Object.freeze(initialItems.map(deepFreezeItem));
+  let items: readonly ItineraryItem[] = Object.freeze([]);
 
   /**
    * Derived from the highest generated identifier rather than the item count,
@@ -92,7 +142,7 @@ export function createTripStore(
     return highest;
   };
 
-  let nextItemNumber = highestGeneratedNumber(items) + 1;
+  let nextItemNumber = 1;
 
   const snapshot = (): TripState => Object.freeze({
     revision,
@@ -113,9 +163,7 @@ export function createTripStore(
   };
 
   const requireTripDate = (date: string): void => {
-    if (typeof date !== 'string' || !ISO_DATE.test(date)) {
-      throw new TravelDomainError('invalid_request', `Date must be an ISO YYYY-MM-DD value: ${date}`);
-    }
+    calendarTimestamp(date);
     if (date < constraints.startDate || date > constraints.endDate) {
       throw new TravelDomainError(
         'invalid_request',
@@ -138,6 +186,123 @@ export function createTripStore(
     }
   };
 
+  const validateItem = (entry: ItineraryItem): void => {
+    if (!isRecord(entry)) {
+      throw new TravelDomainError('invalid_request', 'Itinerary items must be objects.');
+    }
+    const id = entry.id;
+    const kind = entry.kind;
+    const date = entry.date;
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new TravelDomainError('invalid_request', 'Itinerary items require a non-empty id.');
+    }
+    const generated = GENERATED_ID.exec(id);
+    if (generated !== null) {
+      const parsed = Number(generated[1]);
+      if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed >= Number.MAX_SAFE_INTEGER) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Generated itinerary item id is outside the supported numeric range: ${id}.`,
+        );
+      }
+    }
+    if (typeof date !== 'string') {
+      throw new TravelDomainError('invalid_request', 'Itinerary items require a date.');
+    }
+    requireTripDate(date);
+
+    if (kind === 'flight') {
+      const flightId = entry.flightId;
+      if (typeof flightId !== 'string') {
+        throw new TravelDomainError('invalid_request', 'Flight items require a flightId.');
+      }
+      const flight = FLIGHTS.find((candidate) => candidate.id === flightId);
+      if (flight === undefined) {
+        throw new TravelDomainError('not_found', `No flight with id ${flightId}.`);
+      }
+      if (date !== flight.departureDate) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${flight.id} departs on ${flight.departureDate}, not ${date}.`,
+        );
+      }
+      if (constraints.avoidRedEyeFlights && flight.redEye) {
+        throw new TravelDomainError(
+          'invalid_request',
+          `Flight ${flight.id} is a red-eye departure and this trip avoids them.`,
+        );
+      }
+      const canonicalLabel = `${flight.carrier} ${flight.originCode}-${flight.destinationCode}`;
+      if (entry.priceInr !== flight.priceInr) {
+        throw new TravelDomainError('invalid_request', `Flight ${flight.id} must use its canonical price.`);
+      }
+      if (entry.label !== canonicalLabel) {
+        throw new TravelDomainError('invalid_request', `Flight ${flight.id} must use its canonical label.`);
+      }
+      return;
+    }
+
+    if (kind === 'stay') {
+      const stayId = entry.stayId;
+      if (typeof stayId !== 'string') {
+        throw new TravelDomainError('invalid_request', 'Stay items require a stayId.');
+      }
+      const stay = STAYS.find((candidate) => candidate.id === stayId);
+      if (stay === undefined) {
+        throw new TravelDomainError('not_found', `No stay with id ${stayId}.`);
+      }
+      requireStaySpan(date, entry.nights);
+      const canonicalPrice = stay.pricePerNightInr * entry.nights;
+      const canonicalLabel = `${stay.name} x${entry.nights} nights`;
+      if (entry.cityId !== stay.cityId) {
+        throw new TravelDomainError('invalid_request', `Stay ${stay.id} must use its canonical city.`);
+      }
+      if (entry.priceInr !== canonicalPrice) {
+        throw new TravelDomainError('invalid_request', `Stay ${stay.id} must use its canonical price.`);
+      }
+      if (entry.label !== canonicalLabel) {
+        throw new TravelDomainError('invalid_request', `Stay ${stay.id} must use its canonical label.`);
+      }
+      return;
+    }
+
+    if (kind === 'activity') {
+      const activityId = entry.activityId;
+      if (typeof activityId !== 'string') {
+        throw new TravelDomainError('invalid_request', 'Activity items require an activityId.');
+      }
+      const activity = ACTIVITIES.find((candidate) => candidate.id === activityId);
+      if (activity === undefined) {
+        throw new TravelDomainError('not_found', `No activity with id ${activityId}.`);
+      }
+      if (entry.cityId !== activity.cityId) {
+        throw new TravelDomainError('invalid_request', `Activity ${activity.id} must use its canonical city.`);
+      }
+      if (entry.priceInr !== activity.priceInr) {
+        throw new TravelDomainError('invalid_request', `Activity ${activity.id} must use its canonical price.`);
+      }
+      if (entry.label !== activity.name) {
+        throw new TravelDomainError('invalid_request', `Activity ${activity.id} must use its canonical label.`);
+      }
+      return;
+    }
+
+    throw new TravelDomainError('invalid_request', `Unknown itinerary item kind: ${String(kind)}.`);
+  };
+
+  const freezeItems = (entries: readonly ItineraryItem[]): readonly ItineraryItem[] => {
+    const ids = new Set<string>();
+    const frozen = Array.from(entries, (entry) => {
+      validateItem(entry);
+      if (ids.has(entry.id)) {
+        throw new TravelDomainError('invalid_request', `Duplicate itinerary item id: ${entry.id}.`);
+      }
+      ids.add(entry.id);
+      return deepFreezeItem(entry);
+    });
+    return Object.freeze(frozen);
+  };
+
   const findItem = (itemId: string): ItineraryItem => {
     const found = items.find((item) => item.id === itemId);
     if (found === undefined) {
@@ -148,6 +313,9 @@ export function createTripStore(
 
   const buildItem = (request: AddItemRequest): ItineraryItem => {
     requireTripDate(request.date);
+    if (!Number.isSafeInteger(nextItemNumber) || nextItemNumber >= Number.MAX_SAFE_INTEGER) {
+      throw new TravelDomainError('invalid_request', 'The itinerary identifier sequence is exhausted.');
+    }
     const id = `it-${nextItemNumber}`;
 
     if (request.kind === 'flight') {
@@ -212,9 +380,13 @@ export function createTripStore(
   };
 
   const commit = (next: readonly ItineraryItem[]): void => {
-    items = Object.freeze(next.map(deepFreezeItem));
+    items = freezeItems(next);
+    nextItemNumber = Math.max(nextItemNumber, highestGeneratedNumber(items) + 1);
     revision += 1;
   };
+
+  items = freezeItems(initialItems);
+  nextItemNumber = highestGeneratedNumber(items) + 1;
 
   return {
     getState: snapshot,
@@ -238,7 +410,6 @@ export function createTripStore(
     addItem: (expectedRevision, request) => {
       requireFresh(expectedRevision);
       const item = buildItem(request);
-      nextItemNumber += 1;
       commit([...items, item]);
       return item;
     },
