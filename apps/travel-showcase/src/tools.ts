@@ -14,7 +14,7 @@
 
 import { ACTIVITIES, DESTINATIONS, FLIGHTS, STAYS } from './inventory.js';
 import { TravelDomainError } from './state.js';
-import type { AddItemRequest, TripStore } from './state.js';
+import type { AddItemRequest, TripMutationSource, TripStore } from './state.js';
 import type { ActivityTag, CityId } from './types.js';
 import type {
   JsonObject,
@@ -158,6 +158,10 @@ function requireExpectedRevision(input: JsonObject, context: RuntimeToolExecuteC
     }
   }
   return declared;
+}
+
+function mutationSource(context: RuntimeToolExecuteContext): TripMutationSource {
+  return context.expectedStateRevision === undefined ? 'external_tool' : 'in_app_runtime';
 }
 
 export function createTravelTools(store: TripStore): RuntimeTool[] {
@@ -331,7 +335,7 @@ export function createTravelTools(store: TripStore): RuntimeTool[] {
           );
         }
 
-        const item = store.addItem(expectedRevision, request);
+        const item = store.addItem(expectedRevision, request, mutationSource(context));
         return { revision: store.getState().revision, staged: item, budget: store.getBudgetSummary() };
       },
     },
@@ -351,7 +355,11 @@ export function createTravelTools(store: TripStore): RuntimeTool[] {
       annotations: { readOnlyHint: false },
       execute: (input, context) => {
         const expectedRevision = requireExpectedRevision(input, context);
-        const removed = store.removeItem(expectedRevision, requireString(input, 'itemId'));
+        const removed = store.removeItem(
+          expectedRevision,
+          requireString(input, 'itemId'),
+          mutationSource(context),
+        );
         return { revision: store.getState().revision, removed, budget: store.getBudgetSummary() };
       },
     },
@@ -376,6 +384,7 @@ export function createTravelTools(store: TripStore): RuntimeTool[] {
           expectedRevision,
           requireString(input, 'itemId'),
           requireString(input, 'toDate'),
+          mutationSource(context),
         );
         return { revision: store.getState().revision, moved, budget: store.getBudgetSummary() };
       },

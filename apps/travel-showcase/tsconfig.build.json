@@ -8,8 +8,12 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": []
+    "types": [],
+    "paths": {}
   },
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "src/**/*.test.ts",
     "src/app/**",

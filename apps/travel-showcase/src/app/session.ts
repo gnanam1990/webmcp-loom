@@ -193,7 +193,12 @@ export function createSession(
     cached = null;
     for (const listener of listeners) listener();
   };
-  store.subscribe(emit);
+  store.subscribe((source) => {
+    // The runtime's terminal tool event publishes an in-app write together
+    // with its updated trace. External WebMCP and human writes have no such
+    // event, so they must invalidate the snapshot immediately here.
+    if (source !== 'in_app_runtime') emit();
+  });
 
   const setLineState = (step: number, state: TraceLineState, detail?: string): void => {
     trace = trace.map((line) => (
