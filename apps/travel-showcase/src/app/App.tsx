@@ -283,15 +283,20 @@ export function projectApprovalBudget(snapshot: SessionSnapshot): ProjectedBudge
 
   let deltaInr: number | null = null;
   if (request.tool.name === 'add_itinerary_item') {
+    const kind = request.input.kind;
     const refId = request.input.refId;
-    const flight = FLIGHTS.find((entry) => entry.id === refId);
-    const stay = STAYS.find((entry) => entry.id === refId);
-    const activity = ACTIVITIES.find((entry) => entry.id === refId);
-    if (flight !== undefined) deltaInr = flight.priceInr;
-    if (stay !== undefined && typeof request.input.nights === 'number') {
-      deltaInr = stay.pricePerNightInr * request.input.nights;
+    if (kind === 'flight') {
+      const flight = FLIGHTS.find((entry) => entry.id === refId);
+      if (flight !== undefined) deltaInr = flight.priceInr;
+    } else if (kind === 'stay') {
+      const stay = STAYS.find((entry) => entry.id === refId);
+      if (stay !== undefined && typeof request.input.nights === 'number') {
+        deltaInr = stay.pricePerNightInr * request.input.nights;
+      }
+    } else if (kind === 'activity') {
+      const activity = ACTIVITIES.find((entry) => entry.id === refId);
+      if (activity !== undefined) deltaInr = activity.priceInr;
     }
-    if (activity !== undefined) deltaInr = activity.priceInr;
   } else if (request.tool.name === 'remove_itinerary_item') {
     const item = snapshot.trip.items.find((entry) => entry.id === request.input.itemId);
     if (item !== undefined) deltaInr = -item.priceInr;

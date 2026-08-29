@@ -20,7 +20,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@webmcp-loom/runtime": "0.1.0",
+    "@webmcp-loom/runtime": "*",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
