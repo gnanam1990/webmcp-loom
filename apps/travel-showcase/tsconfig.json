@@ -5,10 +5,14 @@
     "noEmit": true,
     "types": [
       "node",
-      "vitest/globals"
-    ]
+      "vitest/globals",
+      "vite/client"
+    ],
+    "jsx": "react-jsx"
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts"
   ]
 }
