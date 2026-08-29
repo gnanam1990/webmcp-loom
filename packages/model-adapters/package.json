@@ -16,6 +16,6 @@
     "@webmcp-loom/runtime": "file:../runtime"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "npm run build --workspace @webmcp-loom/runtime && tsc -p tsconfig.build.json"
   }
 }
