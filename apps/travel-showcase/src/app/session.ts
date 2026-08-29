@@ -16,7 +16,12 @@ import { ACTIVITIES, DESTINATIONS, FLIGHTS, STAYS } from '../inventory.js';
 import { createTripStore } from '../state.js';
 import { createTravelTools } from '../tools.js';
 import { HERO_SCRIPT, REPAIR_SCRIPT, createScriptedModel } from './scripted-model.js';
-import type { AgentApprovalRequest, AgentEvent, JsonObject } from '@webmcp-loom/runtime';
+import type {
+  AgentApprovalRequest,
+  AgentEvent,
+  JsonObject,
+  RuntimeTool,
+} from '@webmcp-loom/runtime';
 import type { TripStore } from '../state.js';
 import type { BudgetSummary, ItineraryItem, TripState } from '../types.js';
 
@@ -164,8 +169,10 @@ function scriptFor(trip: TripState): readonly typeof HERO_SCRIPT[number][] {
   return trip.items.length === 0 ? HERO_SCRIPT : REPAIR_SCRIPT;
 }
 
-export function createSession(store: TripStore = createTripStore()): Session {
-  const tools = createTravelTools(store);
+export function createSession(
+  store: TripStore = createTripStore(),
+  tools: readonly RuntimeTool[] = createTravelTools(store),
+): Session {
   const listeners = new Set<() => void>();
 
   let status: SessionStatus = 'idle';
@@ -186,6 +193,7 @@ export function createSession(store: TripStore = createTripStore()): Session {
     cached = null;
     for (const listener of listeners) listener();
   };
+  store.subscribe(emit);
 
   const setLineState = (step: number, state: TraceLineState, detail?: string): void => {
     trace = trace.map((line) => (
@@ -341,7 +349,6 @@ export function createSession(store: TripStore = createTripStore()): Session {
 
     removeItem: (itemId: string) => {
       store.editAsHuman((items) => items.filter((item) => item.id !== itemId));
-      emit();
     },
 
     reset: () => {

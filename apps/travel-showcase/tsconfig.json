@@ -14,5 +14,10 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "vite.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/runtime/tsconfig.build.json"
+    }
   ]
 }

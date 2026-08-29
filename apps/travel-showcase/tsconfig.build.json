@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "composite": false,
+    "composite": true,
     "noEmit": false,
     "declaration": true,
     "declarationMap": true,
@@ -14,5 +14,10 @@
     "src/**/*.test.ts",
     "src/app/**",
     "vite.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/runtime/tsconfig.build.json"
+    }
   ]
 }

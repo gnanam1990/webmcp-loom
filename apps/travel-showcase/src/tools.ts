@@ -16,7 +16,11 @@ import { ACTIVITIES, DESTINATIONS, FLIGHTS, STAYS } from './inventory.js';
 import { TravelDomainError } from './state.js';
 import type { AddItemRequest, TripStore } from './state.js';
 import type { ActivityTag, CityId } from './types.js';
-import type { JsonObject, RuntimeTool, RuntimeToolExecuteContext } from './runtime-contract.js';
+import type {
+  JsonObject,
+  RuntimeTool,
+  RuntimeToolExecuteContext,
+} from '@webmcp-loom/runtime';
 
 const CITY_IDS: readonly CityId[] = ['hakone', 'kyoto', 'nara', 'osaka', 'tokyo'];
 const ACTIVITY_TAGS: readonly ActivityTag[] = ['culture', 'food', 'nature', 'nightlife', 'shopping'];

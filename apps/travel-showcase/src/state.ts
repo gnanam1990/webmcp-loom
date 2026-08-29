@@ -47,6 +47,8 @@ export type AddItemRequest =
 export interface TripStore {
   getState(): TripState;
   getBudgetSummary(): BudgetSummary;
+  /** Notify application consumers after an accepted human or agent write commits. */
+  subscribe(listener: () => void): () => void;
   /** Agent write. `expectedRevision` must match current state exactly. */
   addItem(expectedRevision: number, request: AddItemRequest): ItineraryItem;
   removeItem(expectedRevision: number, itemId: string): ItineraryItem;
@@ -127,6 +129,7 @@ export function createTripStore(
   });
   let revision = 1;
   let items: readonly ItineraryItem[] = Object.freeze([]);
+  const listeners = new Set<() => void>();
 
   /**
    * Derived from the highest generated identifier rather than the item count,
@@ -383,6 +386,13 @@ export function createTripStore(
     items = freezeItems(next);
     nextItemNumber = Math.max(nextItemNumber, highestGeneratedNumber(items) + 1);
     revision += 1;
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch {
+        // Observers cannot roll back a committed write or make it appear failed.
+      }
+    }
   };
 
   items = freezeItems(initialItems);
@@ -390,6 +400,11 @@ export function createTripStore(
 
   return {
     getState: snapshot,
+
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
 
     getBudgetSummary: () => {
       const byKind: Record<ItineraryItemKind, number> = { activity: 0, flight: 0, stay: 0 };

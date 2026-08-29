@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ACTIVITIES, FLIGHTS, STAYS } from '../inventory.js';
-import { createSession } from './session.js';
-import type { SessionSnapshot, TraceLine } from './session.js';
+import type { Session, SessionSnapshot, TraceLine } from './session.js';
 import type { ItineraryItem, TripState } from '../types.js';
 
 const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -20,8 +19,7 @@ const REPAIR_GOAL = 'Rework everything around that and keep the same budget.';
 
 const BUSY: readonly SessionSnapshot['status'][] = ['running', 'awaiting_approval'];
 
-export function App(): React.JSX.Element {
-  const session = useMemo(() => createSession(), []);
+export function App({ session }: { session: Session }): React.JSX.Element {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [goal, setGoal] = useState(HERO_GOAL);
   const runButton = useRef<HTMLButtonElement>(null);

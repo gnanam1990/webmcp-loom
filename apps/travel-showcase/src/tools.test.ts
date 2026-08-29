@@ -1,22 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { assertValidToolSchema } from '@webmcp-loom/runtime';
 import { TravelDomainError, createTripStore } from './state.js';
 import { createTravelTools } from './tools.js';
-import type { JsonObject, RuntimeTool, RuntimeToolExecuteContext } from './runtime-contract.js';
+import type {
+  JsonObject,
+  RuntimeTool,
+  RuntimeToolExecuteContext,
+} from '@webmcp-loom/runtime';
 import type { TripStore } from './state.js';
-
-/**
- * Mirrors the runtime's bounded JSON Schema subset. The travel package cannot
- * import the runtime validator before that package is built, so this guards
- * against a schema keyword the runtime would reject at registration time.
- * Day 3 integration replaces this with the real `assertValidToolSchema`.
- */
-const SUPPORTED_SCHEMA_KEYS = new Set([
-  '$id', '$schema', 'additionalProperties', 'const', 'default', 'deprecated',
-  'description', 'enum', 'examples', 'exclusiveMaximum', 'exclusiveMinimum',
-  'items', 'maxItems', 'maxLength', 'maximum', 'minItems', 'minLength',
-  'minimum', 'properties', 'readOnly', 'required', 'title', 'type',
-  'writeOnly',
-]);
 
 const FORBIDDEN_CAPABILITY = /\b(book|booking|pay|payment|purchase|checkout|credential|password|delete account|refund)\b/i;
 
@@ -31,18 +22,6 @@ function toolsFor(store: TripStore): Map<string, RuntimeTool> {
 function call(tool: RuntimeTool | undefined, input: JsonObject, revision?: number): JsonObject {
   if (tool === undefined) throw new Error('Tool is not registered.');
   return tool.execute(input, context(revision)) as JsonObject;
-}
-
-function collectSchemaKeys(schema: unknown, found: Set<string>): void {
-  if (typeof schema !== 'object' || schema === null || Array.isArray(schema)) return;
-  for (const [key, value] of Object.entries(schema)) {
-    found.add(key);
-    if (key === 'properties' && typeof value === 'object' && value !== null) {
-      for (const child of Object.values(value)) collectSchemaKeys(child, found);
-    } else if (key === 'items') {
-      collectSchemaKeys(value, found);
-    }
-  }
 }
 
 describe('travel tool surface', () => {
@@ -81,11 +60,7 @@ describe('travel tool surface', () => {
 
   it('uses only JSON Schema keywords the runtime supports', () => {
     for (const tool of createTravelTools(createTripStore())) {
-      const found = new Set<string>();
-      collectSchemaKeys(tool.inputSchema, found);
-      for (const key of found) {
-        expect(SUPPORTED_SCHEMA_KEYS.has(key), `${tool.name} uses ${key}`).toBe(true);
-      }
+      expect(() => assertValidToolSchema(tool.inputSchema), tool.name).not.toThrow();
       expect(tool.inputSchema.type).toBe('object');
       expect(tool.inputSchema.additionalProperties).toBe(false);
     }

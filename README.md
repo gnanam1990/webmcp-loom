@@ -6,7 +6,9 @@ WebMCP made websites usable by agents. WebMCP Loom makes them agent-native for p
 
 ## Status
 
-The team foundation is merged. The runtime track now contains the first independently implemented TypeScript foundation: bounded multi-step execution, deterministic validation, approval and stale-state boundaries, cancellation, a model-neutral contract, WebMCP adapters, tests and built-package smoke fixtures.
+The runtime and collaborative travel foundations are merged: bounded multi-step execution, deterministic validation, approval and stale-state boundaries, cancellation, a model-neutral contract, WebMCP adapters, a shared-state Japan planner, visible approvals, responsive UI, tests and built-package smoke fixtures.
+
+The travel application now creates one canonical tool array for both its in-app runtime and document WebMCP registration. External WebMCP writes update the same subscribed store the visible board reads, so the two entry points cannot drift onto separate state.
 
 The earlier [Latchwork runtime foundation](https://github.com/gnanam1990/latchwork/pull/7) remains source evidence; WebMCP Loom's implementation is independently structured and revalidated here.
 

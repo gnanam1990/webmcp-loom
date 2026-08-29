@@ -146,9 +146,11 @@ describe('human edits and stale state', () => {
   it('stops rather than overwriting when the person edits mid-run', async () => {
     const store = createTripStore();
     const session = createSession(store);
+    let edited = false;
     // Edit the shared state at the moment the agent asks to write.
     session.subscribe(() => {
-      if (session.getSnapshot().status === 'awaiting_approval') {
+      if (session.getSnapshot().status === 'awaiting_approval' && !edited) {
+        edited = true;
         store.editAsHuman((items) => items);
         session.approve();
       }

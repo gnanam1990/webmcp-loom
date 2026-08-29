@@ -1,8 +1,6 @@
 # `@webmcp-loom/travel-showcase`
 
-The deterministic Japan travel domain, its shared state, and the canonical WebMCP tool surface for the collaborative showcase.
-
-This package is the domain foundation only. There is no user interface yet — the interface is specified in [the collaboration contract](docs/collaboration-contract.md) and built in the Day 3 and Day 5 tracks.
+The deterministic Japan travel domain, collaborative application, shared state, and canonical WebMCP tool surface for the showcase.
 
 ## What is implemented
 
@@ -11,7 +9,9 @@ This package is the domain foundation only. There is no user interface yet — t
 - a shared store whose revision increments on every accepted write;
 - compare-and-swap on agent writes, and revision-free human edits that preserve canonical domain invariants;
 - ten tool definitions with schemas, read/write annotations and deterministic executors;
-- 65 domain tests.
+- a responsive itinerary, budget, trace and visible-approval interface;
+- one application factory that hands the same store and tool array to the in-app runtime and document WebMCP registration;
+- deterministic domain, collaboration, accessibility-helper and WebMCP integration tests.
 
 ## Shared state and revisions
 
@@ -36,6 +36,14 @@ store.addItem(1, { kind: 'activity', activityId: 'ac-osa-castle', date: '2026-11
 Read tools return the current `revision` alongside their data, and write tools require it back as `expectedRevision`. That round trip is deliberate. WebMCP's `executeTool()` carries cancellation but no revision token, so a revision passed out-of-band by the in-app runtime would be invisible to an external agent calling the same tool. Carrying it in the validated input contract means both callers are held to the same check, enforced inside the page-owned executor.
 
 When the in-app runtime also supplies its captured revision, the executor requires the two to agree.
+
+The store publishes accepted commits to subscribers. That notification is what lets an external WebMCP write invalidate the session snapshot and immediately update the visible itinerary and budget. Rejected writes do not emit.
+
+## WebMCP registration
+
+The browser entry point calls `installDocumentRuntimeTools()` with the exact tool array used by the in-app session. In browsers that expose `document.modelContext`, all ten tools are registered and share the visible application state. Unsupported browsers keep the in-app experience working and return `null` from the registration adapter.
+
+Registration is cancellation-bound to the page lifecycle. A deterministic integration test supplies a draft-compatible `document.modelContext`, verifies all ten registrations, executes an external write, and proves the session snapshot advances to the same revision.
 
 ## Tool surface
 
@@ -64,11 +72,7 @@ There is no booking, payment, credential, account or deletion capability, and no
 
 ## Runtime types
 
-`src/runtime-contract.ts` mirrors the runtime's tool contract structurally rather than importing `@webmcp-loom/runtime`.
-
-That package typechecks with `noEmit`, so it publishes no declarations until its build step, and `npm run verify` typechecks before it builds — importing it here would make a clean checkout fail on ordering alone. The mirrored types are structural, so the tool array is assignable to `RuntimeTool[]` without a cast.
-
-Day 3 integration owns replacing this with the real import and adding a compile-time conformance assertion. Until then, keep `src/runtime-contract.ts` in sync with `packages/runtime/src/types.ts`.
+The package imports `RuntimeTool`, executor context and JSON types directly from `@webmcp-loom/runtime`; there is no ambient or structural mirror to drift. TypeScript project references build the runtime declarations before checking or building the application, including from a clean checkout. Tool schemas are validated by the runtime's real `assertValidToolSchema()` implementation in the travel test suite.
 
 ## Verification
 
