@@ -382,8 +382,9 @@ export function createTravelTools(store: TripStore): RuntimeTool[] {
     return {
       ...tool,
       execute: (input, context) => {
-        validateExecutorInput(input, tool.inputSchema);
-        return execute(input, context);
+        const normalizedInput = input === undefined ? {} : input;
+        validateExecutorInput(normalizedInput, tool.inputSchema);
+        return execute(normalizedInput, context);
       },
     };
   });

@@ -11,7 +11,7 @@ This package is the domain foundation only. There is no user interface yet — t
 - a shared store whose revision increments on every accepted write;
 - compare-and-swap on agent writes, and revision-free human edits that preserve canonical domain invariants;
 - ten tool definitions with schemas, read/write annotations and deterministic executors;
-- 63 domain tests.
+- 65 domain tests.
 
 ## Shared state and revisions
 

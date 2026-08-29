@@ -308,6 +308,14 @@ describe('store integrity', () => {
     expect(store.getState()).toMatchObject({ revision: 2, items: [item] });
   });
 
+  it('rejects sparse human edits atomically', () => {
+    const { store, item } = storeWithFlight();
+    const sparse = new Array<ItineraryItem>(1);
+    expect(() => store.editAsHuman(() => sparse)).toThrow(TravelDomainError);
+    expect(store.getState()).toMatchObject({ revision: 2, items: [item] });
+    expect(store.getBudgetSummary().committedInr).toBe(38_500);
+  });
+
   it('rejects invalid seeded items before publishing state', () => {
     expect(() => createTripStore(HERO_TRIP_CONSTRAINTS, [{
       id: 'seed-flight',

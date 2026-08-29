@@ -299,4 +299,12 @@ describe('untrusted input reaching the executor directly', () => {
     expect(() => call(toolsFor(createTripStore()).get('get_trip_constraints'), input))
       .toThrow(/Tool input must be an object/);
   });
+
+  it('normalizes omitted input only for tools whose schema permits an empty object', () => {
+    const tools = toolsFor(createTripStore());
+    const omitted = undefined as unknown as JsonObject;
+    expect(call(tools.get('get_trip_constraints'), omitted)).toMatchObject({ revision: 1 });
+    expect(() => call(tools.get('add_itinerary_item'), omitted))
+      .toThrow(/expectedRevision is required/);
+  });
 });

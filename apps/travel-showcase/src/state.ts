@@ -292,7 +292,7 @@ export function createTripStore(
 
   const freezeItems = (entries: readonly ItineraryItem[]): readonly ItineraryItem[] => {
     const ids = new Set<string>();
-    const frozen = entries.map((entry) => {
+    const frozen = Array.from(entries, (entry) => {
       validateItem(entry);
       if (ids.has(entry.id)) {
         throw new TravelDomainError('invalid_request', `Duplicate itinerary item id: ${entry.id}.`);
