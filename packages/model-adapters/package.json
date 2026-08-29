@@ -1,0 +1,21 @@
+{
+  "name": "@webmcp-loom/model-adapters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.84",
+    "@webmcp-loom/runtime": "file:../runtime"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  }
+}
