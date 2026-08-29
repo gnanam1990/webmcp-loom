@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSession } from './session.js';
-import { formatDay, projectApprovalBudget } from './App.js';
+import { formatDay, projectApprovalBudget, traceAnnouncement } from './App.js';
 import type { SessionSnapshot } from './session.js';
 
 describe('travel application presentation helpers', () => {
@@ -52,5 +52,15 @@ describe('travel application presentation helpers', () => {
     await session.run('Prepare the trip.');
     expect(evaluated).toBe(true);
     expect(projection).toBeNull();
+  });
+
+  it('announces trace state and detail changes to assistive technology', () => {
+    expect(traceAnnouncement({
+      step: 3,
+      toolName: 'add_itinerary_item',
+      label: 'Add Sakura Hotel',
+      state: 'awaiting_approval',
+      detail: 'Waiting for your approval.',
+    })).toBe('Step 3: Add Sakura Hotel — waiting for you — Waiting for your approval.');
   });
 });

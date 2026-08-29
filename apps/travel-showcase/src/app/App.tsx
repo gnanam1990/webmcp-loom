@@ -243,7 +243,7 @@ function Trace({ lines }: { lines: readonly TraceLine[] }): React.JSX.Element {
         </button>
       </div>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        Step {latest.step}: {latest.label}.
+        {traceAnnouncement(latest)}
       </p>
       <div id="trace-content" className={`trace__content ${expanded ? 'is-expanded' : ''}`}>
         <ol className="trace">
@@ -268,6 +268,11 @@ function stateWord(state: TraceLine['state']): string {
   if (state === 'awaiting_approval') return 'waiting for you';
   if (state === 'succeeded') return 'done';
   return 'stopped';
+}
+
+export function traceAnnouncement(line: TraceLine): string {
+  const detail = line.detail === undefined ? '.' : ` — ${line.detail}`;
+  return `Step ${line.step}: ${line.label} — ${stateWord(line.state)}${detail}`;
 }
 
 export interface ProjectedBudget {

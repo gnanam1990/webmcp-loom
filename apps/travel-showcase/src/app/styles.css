@@ -17,6 +17,7 @@
   --over: #a3231f;
   --radius: 14px;
   --gap: 20px;
+
   color-scheme: light;
 }
 
@@ -33,6 +34,7 @@
     --warn: #ffcb8a;
     --warn-bg: #2c1f0f;
     --over: #ff9d97;
+
     color-scheme: dark;
   }
 }
@@ -355,6 +357,7 @@ h2 { font-size: 1.05rem; }
 .approval__meta dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); }
 .approval__meta dd { margin: 2px 0 0; font-weight: 600; }
 .approval__budget { margin: 16px 0 0; font-weight: 600; color: var(--ink-soft); }
+.approval__budget.is-over { color: var(--over); }
 .approval__note { margin: 16px 0 0; font-size: 0.88rem; color: var(--ink-soft); }
 .approval__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 
