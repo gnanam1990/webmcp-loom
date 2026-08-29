@@ -63,7 +63,7 @@ export const HERO_SCRIPT: readonly ScriptedStep[] = Object.freeze([
 /** The follow-up turn: read what the person changed, then repair around it. */
 export const REPAIR_SCRIPT: readonly ScriptedStep[] = Object.freeze([
   { tool: 'get_itinerary', input: {} },
-  { tool: 'search_stays', input: { cityId: 'tokyo', maxPricePerNightInr: 6_000 } },
+  { tool: 'search_stays', input: { cityId: 'tokyo', maxPricePerNightInr: 6_500 } },
   {
     tool: 'add_itinerary_item',
     input: {
@@ -77,7 +77,7 @@ export const REPAIR_SCRIPT: readonly ScriptedStep[] = Object.freeze([
   { tool: null, message: 'Replaced the removed nights with a Tokyo stay inside the same budget.' },
 ]);
 
-const REVISION_IN_PROMPT = /Current state revision:\s*(\d+)/;
+const REVISION_IN_PROMPT = /^Current state revision:\s*(\d+)$/m;
 
 /** Reads the revision the runtime captured for this step out of its own prompt. */
 function currentRevision(prompt: string): number | null {

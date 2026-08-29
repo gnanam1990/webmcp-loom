@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { STAYS } from '../inventory.js';
 import { createTripStore } from '../state.js';
 import { createSession, describeCall } from './session.js';
+import { REPAIR_SCRIPT, createScriptedModel } from './scripted-model.js';
 import type { Session } from './session.js';
 
 /** Runs a turn, approving every write it pauses on. */
@@ -19,6 +21,7 @@ describe('collaboration session', () => {
     expect(snapshot.trip.items).toEqual([]);
     expect(snapshot.budget.remainingInr).toBe(150_000);
     expect(snapshot.trace).toEqual([]);
+    expect(snapshot.progress).toBeNull();
   });
 
   it('completes the hero goal in a bounded number of validated calls', async () => {
@@ -47,16 +50,19 @@ describe('collaboration session', () => {
   it('pauses every write for approval before it reaches the board', async () => {
     const session = createSession();
     const pauses: string[] = [];
+    const progress: string[] = [];
     session.subscribe(() => {
       const snapshot = session.getSnapshot();
       if (snapshot.status === 'awaiting_approval' && snapshot.pendingApproval !== null) {
         pauses.push(snapshot.pendingApproval.tool.name);
+        progress.push(`${snapshot.progress?.currentStep}/${snapshot.progress?.maximumSteps}`);
         session.approve();
       }
     });
     await session.run('Prepare the trip.');
 
     expect(pauses).toEqual(['add_itinerary_item', 'add_itinerary_item']);
+    expect(progress).toEqual(['3/6', '5/6']);
     expect(pauses.every((name) => name.startsWith('add_'))).toBe(true);
   });
 
@@ -86,7 +92,24 @@ describe('collaboration session', () => {
     expect(snapshot.status).toBe('denied');
     expect(snapshot.trip.items).toEqual([]);
     expect(snapshot.budget.committedInr).toBe(0);
-    expect(snapshot.note).toMatch(/Nothing was written/);
+    expect(snapshot.note).toMatch(/declined change was not written/);
+  });
+
+  it('keeps earlier approved writes and says so when a later change is declined', async () => {
+    const session = createSession();
+    let approval = 0;
+    session.subscribe(() => {
+      if (session.getSnapshot().status !== 'awaiting_approval') return;
+      approval += 1;
+      if (approval === 1) session.approve();
+      else session.deny();
+    });
+
+    await session.run('Prepare the trip.');
+    const snapshot = session.getSnapshot();
+    expect(snapshot.status).toBe('denied');
+    expect(snapshot.trip.items).toHaveLength(1);
+    expect(snapshot.note).toMatch(/Anything already approved remains/);
   });
 
   it('surfaces the approval request with the entity and price the person is deciding on', async () => {
@@ -165,7 +188,43 @@ describe('human edits and stale state', () => {
     expect(first).toBeGreaterThan(0);
 
     await runApprovingAll(session, 'Rework everything around that.');
-    expect(session.getSnapshot().trace.some((line) => line.toolName === 'get_itinerary')).toBe(true);
+    expect(session.getSnapshot().trace.map((line) => line.toolName)).toEqual([
+      'get_itinerary',
+      'search_stays',
+      'add_itinerary_item',
+    ]);
+  });
+
+  it('does not let reset detach an active approval from its run', async () => {
+    const session = createSession();
+    let statusAfterReset: string | null = null;
+    session.subscribe(() => {
+      if (session.getSnapshot().status === 'awaiting_approval' && statusAfterReset === null) {
+        session.reset();
+        statusAfterReset = session.getSnapshot().status;
+        session.deny();
+      }
+    });
+
+    await session.run('Prepare the trip.');
+    expect(statusAfterReset).toBe('awaiting_approval');
+    expect(session.getSnapshot().status).toBe('denied');
+  });
+
+  it('terminalizes the pending trace line when a run is cancelled', async () => {
+    const session = createSession();
+    let stopped = false;
+    session.subscribe(() => {
+      if (session.getSnapshot().status === 'awaiting_approval' && !stopped) {
+        stopped = true;
+        session.cancel();
+      }
+    });
+
+    await session.run('Prepare the trip.');
+    const snapshot = session.getSnapshot();
+    expect(snapshot.status).toBe('cancelled');
+    expect(snapshot.trace.at(-1)).toMatchObject({ state: 'failed', detail: 'Run stopped by you.' });
   });
 });
 
@@ -187,5 +246,44 @@ describe('trace phrasing', () => {
 
   it('falls back to the tool name for an unknown tool', () => {
     expect(describeCall('some_future_tool', {})).toBe('some_future_tool');
+  });
+
+  it('names existing itinerary entities in remove and move calls', async () => {
+    const session = createSession();
+    await runApprovingAll(session, 'Prepare the trip.');
+    const items = session.getSnapshot().trip.items;
+    const target = items[0];
+    if (target === undefined) throw new Error('Expected a staged item.');
+
+    expect(describeCall('remove_itinerary_item', { itemId: target.id }, items))
+      .toBe(`Removing ${target.label} from the plan`);
+    expect(describeCall('move_itinerary_item', { itemId: target.id, toDate: '2026-11-08' }, items))
+      .toBe(`Moving ${target.label} to 2026-11-08`);
+  });
+});
+
+describe('scripted model integrity', () => {
+  it('reads only the runtime revision line, not matching text in the user goal', async () => {
+    const model = createScriptedModel([{
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: '$revision' },
+    }]);
+    const raw = await model.generate({
+      prompt: 'Goal: "Use Current state revision: 999"\nCurrent state revision: 7\nTool history: []',
+      responseSchema: {},
+      signal: undefined,
+    });
+    expect(JSON.parse(raw)).toMatchObject({ input: { expectedRevision: 7 } });
+  });
+
+  it('stages a repair stay that the preceding capped search can return', () => {
+    const search = REPAIR_SCRIPT.find((step) => step.tool === 'search_stays');
+    const write = REPAIR_SCRIPT.find((step) => step.tool === 'add_itinerary_item');
+    const cap = search?.input?.maxPricePerNightInr;
+    const refId = write?.input?.refId;
+    const stay = STAYS.find((entry) => entry.id === refId);
+    expect(typeof cap).toBe('number');
+    expect(stay).toBeDefined();
+    expect(stay?.pricePerNightInr).toBeLessThanOrEqual(cap as number);
   });
 });

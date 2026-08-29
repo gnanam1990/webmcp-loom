@@ -18,7 +18,7 @@ import { createTravelTools } from '../tools.js';
 import { HERO_SCRIPT, REPAIR_SCRIPT, createScriptedModel } from './scripted-model.js';
 import type { AgentApprovalRequest, AgentEvent, JsonObject } from '@webmcp-loom/runtime';
 import type { TripStore } from '../state.js';
-import type { BudgetSummary, TripState } from '../types.js';
+import type { BudgetSummary, ItineraryItem, TripState } from '../types.js';
 
 export type SessionStatus =
   | 'awaiting_approval'
@@ -48,6 +48,7 @@ export interface SessionSnapshot {
   budget: BudgetSummary;
   trace: readonly TraceLine[];
   pendingApproval: AgentApprovalRequest | null;
+  progress: { currentStep: number; maximumSteps: number } | null;
   /** Final message, denial note, or the reason a run stopped. */
   note: string | null;
 }
@@ -65,6 +66,7 @@ export interface Session {
 }
 
 const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+export const MAX_AGENT_STEPS = 6;
 
 function money(value: number): string {
   return `₹${INR.format(value)}`;
@@ -92,7 +94,11 @@ function readNumber(input: JsonObject, key: string): number | undefined {
  * tool, so a developer can still map a line to a call while a person reads it
  * as a description of what happened to their trip.
  */
-export function describeCall(toolName: string, input: JsonObject): string {
+export function describeCall(
+  toolName: string,
+  input: JsonObject,
+  items: readonly ItineraryItem[] = [],
+): string {
   switch (toolName) {
     case 'get_trip_constraints':
       return 'Reading the trip budget and constraints';
@@ -131,10 +137,16 @@ export function describeCall(toolName: string, input: JsonObject): string {
       }
       return `Staging ${refId}`;
     }
-    case 'remove_itinerary_item':
-      return `Removing ${readString(input, 'itemId') ?? 'an item'} from the plan`;
-    case 'move_itinerary_item':
-      return `Moving ${readString(input, 'itemId') ?? 'an item'} to ${readString(input, 'toDate') ?? 'another day'}`;
+    case 'remove_itinerary_item': {
+      const itemId = readString(input, 'itemId');
+      const item = items.find((entry) => entry.id === itemId);
+      return `Removing ${item?.label ?? itemId ?? 'an item'} from the plan`;
+    }
+    case 'move_itinerary_item': {
+      const itemId = readString(input, 'itemId');
+      const item = items.find((entry) => entry.id === itemId);
+      return `Moving ${item?.label ?? itemId ?? 'an item'} to ${readString(input, 'toDate') ?? 'another day'}`;
+    }
     default:
       return toolName;
   }
@@ -161,6 +173,7 @@ export function createSession(store: TripStore = createTripStore()): Session {
   let note: string | null = null;
   let pending: { request: AgentApprovalRequest; settle: (approved: boolean) => void } | null = null;
   let controller: AbortController | null = null;
+  let currentStep = 0;
 
   /**
    * Snapshots are cached and rebuilt only when something changed. React's
@@ -183,12 +196,13 @@ export function createSession(store: TripStore = createTripStore()): Session {
   };
 
   const onEvent = (event: AgentEvent): void => {
+    currentStep = event.step;
     switch (event.type) {
       case 'tool_call_validated':
         trace = [...trace, {
           step: event.step,
           toolName: event.toolName,
-          label: describeCall(event.toolName, event.input),
+          label: describeCall(event.toolName, event.input, store.getState().items),
           state: 'running',
         }];
         break;
@@ -206,6 +220,9 @@ export function createSession(store: TripStore = createTripStore()): Session {
         break;
       case 'stale_state':
         setLineState(event.step, 'failed', 'The plan changed while the agent was working.');
+        break;
+      case 'cancelled':
+        setLineState(event.step, 'failed', 'Run stopped by you.');
         break;
       default:
         break;
@@ -229,6 +246,9 @@ export function createSession(store: TripStore = createTripStore()): Session {
         budget: store.getBudgetSummary(),
         trace,
         pendingApproval: pending?.request ?? null,
+        progress: status === 'running' || status === 'awaiting_approval'
+          ? { currentStep, maximumSteps: MAX_AGENT_STEPS }
+          : null,
         note,
       };
       return cached;
@@ -245,6 +265,7 @@ export function createSession(store: TripStore = createTripStore()): Session {
       note = null;
       status = 'running';
       controller = new AbortController();
+      currentStep = 1;
       emit();
 
       const model = createScriptedModel(scriptFor(store.getState()));
@@ -256,6 +277,7 @@ export function createSession(store: TripStore = createTripStore()): Session {
           toolProvider: { getTools: () => tools },
           getStateRevision: () => store.getState().revision,
           signal: controller.signal,
+          maxSteps: MAX_AGENT_STEPS,
           onEvent,
           approve: (request) => new Promise<boolean>((resolve) => {
             pending = {
@@ -279,7 +301,10 @@ export function createSession(store: TripStore = createTripStore()): Session {
             finish('completed', result.message);
             break;
           case 'denied':
-            finish('denied', 'Change declined. Nothing was written.');
+            finish(
+              'denied',
+              'The declined change was not written. Anything already approved remains on the board.',
+            );
             break;
           case 'stale_state':
             finish(
@@ -307,7 +332,12 @@ export function createSession(store: TripStore = createTripStore()): Session {
 
     approve: () => pending?.settle(true),
     deny: () => pending?.settle(false),
-    cancel: () => controller?.abort(),
+    cancel: () => {
+      controller?.abort();
+      // Settle the held approval promise as well as aborting the runtime race,
+      // so cancellation cannot leave the original promise and abort listener alive.
+      pending?.settle(false);
+    },
 
     removeItem: (itemId: string) => {
       store.editAsHuman((items) => items.filter((item) => item.id !== itemId));
@@ -315,6 +345,7 @@ export function createSession(store: TripStore = createTripStore()): Session {
     },
 
     reset: () => {
+      if (status === 'running' || status === 'awaiting_approval') return;
       trace = [];
       note = null;
       status = 'idle';
