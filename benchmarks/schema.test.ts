@@ -13,6 +13,8 @@ describe('benchmark foundation', () => {
 
   it('validates every task in the combined benchmark corpus with unique ids', () => {
     const corpus = [...SMOKE_TASKS, ...TRAVEL_TASKS];
+    expect(TRAVEL_TASKS).toHaveLength(9);
+    expect(corpus).toHaveLength(19);
     expect(new Set(corpus.map(({ id }) => id)).size).toBe(corpus.length);
     for (const task of corpus) assertValidBenchmarkTask(task);
   });

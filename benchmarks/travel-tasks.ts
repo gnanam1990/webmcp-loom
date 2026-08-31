@@ -87,7 +87,7 @@ export const TRAVEL_TASKS: readonly BenchmarkTask[] = [
   {
     id: 'travel-build-two-city-plan',
     title: 'Build a two-city plan inside the budget',
-    description: 'Eight calls: read constraints, search each travel segment, and stage the outbound, both city stays and return under the cap without red-eyes.',
+    description: 'Nine calls: read constraints, search each travel segment, and stage the outbound, both city stays and return under the cap without red-eyes.',
     categories: ['approval', 'identifier_reuse', 'retrieval', 'selection', 'state_change'],
     fixture: 'empty_trip',
     goal: 'Plan the whole ten days across Tokyo and Kyoto with return flights, stay inside the budget, and avoid red-eye departures.',

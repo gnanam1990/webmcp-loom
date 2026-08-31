@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createTravelTools } from '../apps/travel-showcase/src/tools.js';
 import { benchmarkFixture } from './fixtures.js';
 import {
@@ -228,18 +228,35 @@ describe.each(BENCHMARK_CORPUS.map((task) => [task.id, task] as const))(
   'task %s is achievable',
   (_id, task) => {
     const oracle = TASK_ORACLES[task.id] ?? [];
-    it('executes end to end and satisfies its real tool/output contract', async () => {
-      const outcome = await runOracle(task, oracle);
+    let outcome: OracleOutcome;
+
+    beforeEach(async () => {
+      outcome = await runOracle(task, oracle);
+    });
+
+    it('executes end to end against the real tool surface', () => {
       expect(outcome.calledTools.length).toBeGreaterThan(0);
+    });
+
+    it('uses the required and no forbidden tools', () => {
       for (const required of task.expected.toolCalls.requiredToolNames) {
         expect(outcome.calledTools, `${task.id} must call ${required}`).toContain(required);
       }
       for (const forbidden of task.expected.toolCalls.forbiddenToolNames) {
         expect(outcome.calledTools, `${task.id} must not call ${forbidden}`).not.toContain(forbidden);
       }
+    });
+
+    it('stays within its declared call bounds', () => {
       expect(outcome.calledTools.length).toBeGreaterThanOrEqual(task.expected.toolCalls.min);
       expect(outcome.calledTools.length).toBeLessThanOrEqual(task.expected.toolCalls.max);
+    });
+
+    it('has the expected approval shape', () => {
       expect(outcome.writeCalls > 0).toBe(task.expected.approval !== 'none');
+    });
+
+    it('substitutes identifiers from prior real tool outputs', () => {
       for (const reuse of task.expected.identifierReuses) {
         const exposed = outcome.calls
           .filter((call) => call.tool === reuse.sourceTool)
