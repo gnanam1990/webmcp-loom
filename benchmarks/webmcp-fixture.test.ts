@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createWebMcpToolProvider,
@@ -29,10 +29,10 @@ function createWebMcpTravelFixture(): {
     },
     getTools: async () => [...registered.values()].map((tool): RegisteredWebMcpTool => ({
       name: tool.name,
-      title: tool.title,
       description: tool.description,
-      inputSchema: tool.inputSchema,
-      annotations: tool.annotations,
+      ...(tool.title === undefined ? {} : { title: tool.title }),
+      ...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
+      ...(tool.annotations === undefined ? {} : { annotations: tool.annotations }),
       origin: ORIGIN,
     })),
     executeTool: async (tool, input, options) => {
@@ -103,6 +103,7 @@ describe('WebMCP deployment-parity fixture', () => {
     const provider = createWebMcpToolProvider(fixture.context, {
       trustedReadOnlyOrigins: [ORIGIN],
     });
+    const approve = vi.fn(() => true);
     const result = await runAgentRuntime({
       goal: 'Stage the non-red-eye flight.',
       model: model(
@@ -114,7 +115,7 @@ describe('WebMCP deployment-parity fixture', () => {
         { type: 'final', message: 'Staged the non-red-eye flight.' },
       ),
       toolProvider: provider,
-      approve: () => true,
+      approve,
       getStateRevision: fixture.getRevision,
     });
 
@@ -122,6 +123,13 @@ describe('WebMCP deployment-parity fixture', () => {
     expect(result.history.map(({ tool }) => tool)).toEqual([
       'get_trip_constraints', 'search_flights', 'add_itinerary_item',
     ]);
+    expect(approve).toHaveBeenCalledOnce();
+    expect(approve).toHaveBeenCalledWith(expect.objectContaining({
+      tool: expect.objectContaining({ name: 'add_itinerary_item' }),
+    }));
+    expect(result.events).toContainEqual({
+      type: 'approval_required', step: 3, toolName: 'add_itinerary_item',
+    });
     expect(fixture.getRevision()).toBe(2);
   });
 });

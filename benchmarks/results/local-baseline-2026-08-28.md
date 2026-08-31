@@ -1,5 +1,11 @@
 # Local-model baseline — 2026-08-28
 
+> **Evidence status:** preliminary exploratory baseline, not selection-grade
+> evidence. The engine build and decoding configuration were retained, but the
+> hardware profile, operating system, model artifact digests, peak memory, and
+> runner-produced assertion records were not. Repeat these probes through the
+> benchmark runner before using them for selection.
+
 This is preliminary evidence, not a showcase-model selection. It covers two
 deterministic decision probes per candidate; the selection gate still requires
 at least 30 tasks, three attempts per task, declared memory measurement, and a
@@ -113,9 +119,10 @@ fixed target-hardware budget.
 
 G9v3-3B remains the sole provisional leader. It is eligible for the next
 benchmark round, not selected: one run of two probes per candidate cannot
-establish reliability or memory fit. Ternary Bonsai-1.7B is a promising compact
-baseline—it was faster than the other identifier-reuse failures—but it still
-repeated a completed read instead of consuming the result. LFM2.5-1.2B remains
+establish reliability or memory fit. Among candidates that passed
+`read-constraints` but failed `reuse-non-red-eye-id`, Ternary Bonsai-1.7B had
+the lowest recorded reuse-probe latency. It still repeated a completed read
+instead of consuming the result. LFM2.5-1.2B remains
 a useful latency-oriented candidate, but its baseline ID-reuse failure means it
 needs retrieval/prompt work before it can carry the showcase flow. The runner
 must keep JSON Schema enforcement enabled: without it, LFM2.5 appended narrative

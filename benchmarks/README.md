@@ -7,10 +7,13 @@ It does not redefine runtime safety or tool executors.
 
 - `schema.ts` defines task, result, metric and failure records.
 - `smoke-tasks.ts` defines the first ten deterministic Day 1 tasks.
+- `deployment-scenarios.ts` defines the deployment-parity outcome contract.
 - `failure-taxonomy.md` keeps model, adapter, tool and runtime defects
   separately attributable.
 - `model-matrix.md` records candidate local models and the gates that must pass
   before a showcase model is selected.
+- `webmcp-fixture.test.ts` proves discovery, approval and execution through the
+  real runtime WebMCP bridge.
 
 The runner, local adapter and retrieval baseline are Day 2 work. They must
 consume these contracts and the runtime's public `RuntimeModel` contract; they
@@ -28,10 +31,10 @@ all repeated attempts, including failed and invalid runs.
 
 ## Foundation verification
 
-Until the repository deliberately adds this directory to its root project
-references, run its checks explicitly:
+The root verification command typechecks this directory. To repeat only its
+focused checks:
 
 ```bash
 npx tsc -p benchmarks --pretty false
-npx vitest run benchmarks/schema.test.ts
+npx vitest run benchmarks
 ```

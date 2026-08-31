@@ -9,6 +9,7 @@ vi.mock('@mlc-ai/web-llm', () => ({
 import { createWebLlmRuntimeModel } from './webllm.js';
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -49,4 +50,162 @@ describe('createWebLlmRuntimeModel', () => {
     await expect(createWebLlmRuntimeModel({ model: 'fixture' }))
       .rejects.toThrow('WebGPU is unavailable');
   });
+
+  it('interrupts an in-flight generation before releasing the next caller', async () => {
+    let finishInterrupt: (() => void) | undefined;
+    let finishFirstCompletion: ((value: {
+      choices: { message: { content: string } }[];
+    }) => void) | undefined;
+    const interruptGenerate = vi.fn(() => new Promise<void>((resolve) => {
+      finishInterrupt = resolve;
+    }));
+    const firstCompletion = new Promise<{
+      choices: { message: { content: string } }[];
+    }>((resolve) => {
+      finishFirstCompletion = resolve;
+    });
+    const complete = vi.fn()
+      .mockReturnValueOnce(firstCompletion)
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: '{"type":"final","message":"next"}' } }],
+      });
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+      interruptGenerate,
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const runtimeModel = await createWebLlmRuntimeModel({ model: 'fixture' });
+    const controller = new AbortController();
+
+    const cancelled = runtimeModel.generate({
+      prompt: 'First run.', responseSchema: { type: 'object' }, signal: controller.signal,
+    });
+    const cancelledResult = cancelled.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await vi.waitFor(() => expect(interruptGenerate).toHaveBeenCalledOnce());
+
+    const next = runtimeModel.generate({
+      prompt: 'Second run.', responseSchema: { type: 'object' }, signal: undefined,
+    });
+    await Promise.resolve();
+    expect(complete).toHaveBeenCalledTimes(1);
+
+    finishInterrupt?.();
+    await Promise.resolve();
+    expect(complete).toHaveBeenCalledTimes(1);
+    finishFirstCompletion?.({
+      choices: [{ message: { content: '{"type":"final","message":"aborted"}' } }],
+    });
+    await expect(cancelledResult).resolves.toMatchObject({ name: 'AbortError' });
+    await expect(next).resolves.toBe('{"type":"final","message":"next"}');
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start generation for an already-cancelled run', async () => {
+    const complete = vi.fn();
+    const interruptGenerate = vi.fn();
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+      interruptGenerate,
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const runtimeModel = await createWebLlmRuntimeModel({ model: 'fixture' });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(runtimeModel.generate({
+      prompt: 'Cancelled.', responseSchema: { type: 'object' }, signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(complete).not.toHaveBeenCalled();
+    expect(interruptGenerate).not.toHaveBeenCalled();
+  });
+
+  it('settles a cancelled queued caller before the active generation finishes', async () => {
+    let finishFirst: ((value: WebLlmTestCompletion) => void) | undefined;
+    const first = new Promise<WebLlmTestCompletion>((resolve) => {
+      finishFirst = resolve;
+    });
+    const complete = vi.fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce(completion('third'));
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+      interruptGenerate: vi.fn(),
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const model = await createWebLlmRuntimeModel({ model: 'fixture' });
+    const firstRun = model.generate(request('first'));
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+
+    const controller = new AbortController();
+    const queued = model.generate(request('second', controller.signal));
+    const queuedResult = queued.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    controller.abort();
+    await expect(queuedResult).resolves.toMatchObject({ name: 'AbortError' });
+    expect(complete).toHaveBeenCalledOnce();
+
+    const third = model.generate(request('third'));
+    finishFirst?.(completion('first'));
+    await expect(firstRun).resolves.toContain('first');
+    await expect(third).resolves.toContain('third');
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed when an interrupted engine never drains', async () => {
+    vi.useFakeTimers();
+    const complete = vi.fn(() => new Promise<WebLlmTestCompletion>(() => undefined));
+    const interruptGenerate = vi.fn(() => new Promise<void>(() => undefined));
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+      interruptGenerate,
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const model = await createWebLlmRuntimeModel({
+      model: 'fixture',
+      cancellationTimeoutMs: 25,
+    });
+    const controller = new AbortController();
+    const cancelled = model.generate(request('first', controller.signal));
+    const cancelledResult = cancelled.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await expect(cancelledResult).resolves.toMatchObject({ name: 'AbortError' });
+
+    const next = model.generate(request('next'));
+    const nextResult = next.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(25);
+    await expect(nextResult).resolves.toMatchObject({
+      message: expect.stringContaining('reload the model before retrying'),
+    });
+    expect(complete).toHaveBeenCalledOnce();
+  });
 });
+
+interface WebLlmTestCompletion {
+  choices: { message: { content: string } }[];
+}
+
+function completion(message: string): WebLlmTestCompletion {
+  return { choices: [{ message: { content: `{"type":"final","message":"${message}"}` } }] };
+}
+
+function request(prompt: string, signal?: AbortSignal): {
+  prompt: string;
+  responseSchema: Record<string, unknown>;
+  signal: AbortSignal | undefined;
+} {
+  return { prompt, responseSchema: { type: 'object' }, signal };
+}

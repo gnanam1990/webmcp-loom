@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": []
+  },
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/app/**",
+    "vite.config.ts"
+  ]
+}

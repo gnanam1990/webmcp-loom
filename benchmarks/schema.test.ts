@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertValidBenchmarkTask } from './schema.js';
+import { BENCHMARK_FAILURE_DEFAULTS, assertValidBenchmarkTask } from './schema.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
 
 describe('benchmark foundation', () => {
@@ -20,5 +20,22 @@ describe('benchmark foundation', () => {
       'selection',
       'state_change',
     ]));
+  });
+
+  it('accepts cancellation as a first-class terminal runtime outcome', () => {
+    const cancelled = SMOKE_TASKS[0];
+    if (cancelled === undefined) throw new Error('Expected a smoke-task fixture.');
+    expect(() => assertValidBenchmarkTask({
+      ...cancelled,
+      expected: { ...cancelled.expected, allowedStatuses: ['cancelled'] },
+    })).not.toThrow();
+  });
+
+  it('keeps normalized failure codes tied to their taxonomy defaults', () => {
+    expect(BENCHMARK_FAILURE_DEFAULTS.generation_cancelled)
+      .toEqual({ category: 'adapter', retryable: false });
+    expect(BENCHMARK_FAILURE_DEFAULTS.load_failed)
+      .toEqual({ category: 'adapter', retryable: true });
+    expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(29);
   });
 });
