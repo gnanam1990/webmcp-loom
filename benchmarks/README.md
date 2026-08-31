@@ -6,6 +6,14 @@ It does not redefine runtime safety or tool executors.
 ## Current foundation
 
 - `schema.ts` defines task, result, metric and failure records.
+- `fixtures.ts` materialises each declared fixture id into a real store, built
+  through the domain write path so a starting state cannot describe a trip the
+  domain would reject.
+- `oracles.ts` holds one reference solution per task, and `oracles.test.ts`
+  executes each against the real tool surface. This proves a task is solvable
+  before a model is asked to solve it: without it an unsatisfiable fixture is
+  indistinguishable from a model failure, and the taxonomy would record a
+  `model_decision` fault for a defect in the task.
 - `smoke-tasks.ts` defines the first ten deterministic Day 1 tasks.
 - `deployment-scenarios.ts` defines the deployment-parity outcome contract and
   validates runner observations against its required tools and outcomes.
