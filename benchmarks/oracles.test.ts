@@ -3,10 +3,14 @@ import { createTravelTools } from '../apps/travel-showcase/src/tools.js';
 import { benchmarkFixture } from './fixtures.js';
 import { ITEM_ID_PLACEHOLDER, REVISION_PLACEHOLDER, TASK_ORACLES } from './oracles.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
+import { TRAVEL_TASKS } from './travel-tasks.js';
 import type { JsonObject, RuntimeTool } from '@webmcp-loom/runtime';
 import type { ItineraryItem } from '../apps/travel-showcase/src/types.js';
 import type { BenchmarkTask } from './schema.js';
 import type { OracleCall } from './oracles.js';
+/** Every task the corpus ships, whichever suite it belongs to. */
+const BENCHMARK_CORPUS = [...SMOKE_TASKS, ...TRAVEL_TASKS];
+
 
 interface OracleOutcome {
   calledTools: string[];
@@ -76,7 +80,7 @@ function runOracle(task: BenchmarkTask, oracle: readonly OracleCall[]): OracleOu
 
 describe('benchmark fixtures', () => {
   it('materialises every declared fixture id', () => {
-    for (const task of SMOKE_TASKS) {
+    for (const task of BENCHMARK_CORPUS) {
       expect(() => benchmarkFixture(task.fixture), task.id).not.toThrow();
     }
   });
@@ -118,18 +122,18 @@ describe('benchmark fixtures', () => {
 
 describe('oracle coverage', () => {
   it('provides a reference solution for every task', () => {
-    const missing = SMOKE_TASKS.filter((task) => TASK_ORACLES[task.id] === undefined);
+    const missing = BENCHMARK_CORPUS.filter((task) => TASK_ORACLES[task.id] === undefined);
     expect(missing.map((task) => task.id)).toEqual([]);
   });
 
   it('has no oracle for a task that does not exist', () => {
-    const taskIds = new Set(SMOKE_TASKS.map((task) => task.id));
+    const taskIds = new Set(BENCHMARK_CORPUS.map((task) => task.id));
     const orphans = Object.keys(TASK_ORACLES).filter((id) => !taskIds.has(id));
     expect(orphans).toEqual([]);
   });
 });
 
-describe.each(SMOKE_TASKS.map((task) => [task.id, task] as const))(
+describe.each(BENCHMARK_CORPUS.map((task) => [task.id, task] as const))(
   'task %s is achievable',
   (_id, task) => {
     const oracle = TASK_ORACLES[task.id] ?? [];

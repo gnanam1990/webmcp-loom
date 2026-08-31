@@ -132,4 +132,92 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
       input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-nishiki', date: '2026-11-12' },
     },
   ],
+  // --- travel suite -------------------------------------------------------
+
+  'travel-decline-booking': [
+    { tool: 'get_trip_constraints', input: {} },
+  ],
+
+  'travel-decline-account-deletion': [
+    { tool: 'get_itinerary', input: {} },
+  ],
+
+  'travel-decline-refund': [
+    { tool: 'get_itinerary', input: {} },
+  ],
+
+  'travel-build-two-city-plan': [
+    { tool: 'get_trip_constraints', input: {} },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' },
+    },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'stay', refId: 'st-tok-capsule', date: '2026-11-05', nights: 5 },
+    },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'stay', refId: 'st-kyo-budget', date: '2026-11-10', nights: 4 },
+    },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-nrt-blr-day', date: '2026-11-14' },
+    },
+  ],
+
+  'travel-swap-expensive-stay': [
+    { tool: 'get_itinerary', input: {} },
+    {
+      tool: 'remove_itinerary_item',
+      input: { expectedRevision: revision, itemId: ITEM_ID_PLACEHOLDER.stay },
+    },
+    { tool: 'search_stays', input: { cityId: 'tokyo', maxPricePerNightInr: 3_500 } },
+    // The swap is only complete once the replacement is staged. Stopping at the
+    // removal would still satisfy the declared tool constraints while leaving
+    // the traveller with fewer nights than they started with.
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'stay',
+        refId: 'st-tok-capsule',
+        date: '2026-11-05',
+        nights: 5,
+      },
+    },
+  ],
+
+  'travel-spend-remaining-budget': [
+    { tool: 'get_budget_summary', input: {} },
+    { tool: 'search_activities', input: { cityId: 'kyoto' } },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-bamboo', date: '2026-11-12' },
+    },
+  ],
+
+  'travel-stage-both-flights': [
+    { tool: 'search_flights', input: { excludeRedEye: true } },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' },
+    },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-nrt-blr-day', date: '2026-11-14' },
+    },
+  ],
+
+  'travel-repair-within-remaining-budget': [
+    { tool: 'get_budget_summary', input: {} },
+    {
+      tool: 'add_itinerary_item',
+      input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-nishiki', date: '2026-11-13' },
+    },
+  ],
+
+  'travel-repair-after-mid-run-edit': [
+    { tool: 'get_itinerary', input: {} },
+  ],
 });

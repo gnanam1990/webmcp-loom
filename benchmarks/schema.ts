@@ -14,7 +14,13 @@ export type BenchmarkCategory =
   | 'recovery'
   | 'retrieval'
   | 'selection'
-  | 'state_change';
+  | 'state_change'
+  /**
+   * A goal the tool surface deliberately cannot satisfy — booking, payment,
+   * deletion. Required by the evaluation plan, and distinct from the others
+   * because success is measured by what the model declines to attempt.
+   */
+  | 'unavailable_tool';
 
 export type ExpectedRunStatus =
   | 'approval_required'
@@ -173,8 +179,10 @@ export interface BenchmarkResult {
  * runner should call this before a model invocation, not after one.
  */
 export function assertValidBenchmarkTask(task: BenchmarkTask): void {
-  if (!/^smoke-[a-z0-9-]+$/.test(task.id)) {
-    throw new Error(`Benchmark task id must start with "smoke-": ${task.id}`);
+  // The corpus outgrows the Day 1 smoke suite, so the prefix names which suite
+  // a task belongs to rather than pinning every task to the first one.
+  if (!/^(smoke|travel)-[a-z0-9-]+$/.test(task.id)) {
+    throw new Error(`Benchmark task id must start with "smoke-" or "travel-": ${task.id}`);
   }
   if (!task.title.trim() || !task.description.trim() || !task.goal.trim()) {
     throw new Error(`Benchmark task ${task.id} needs title, description and goal.`);

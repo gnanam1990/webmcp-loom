@@ -15,6 +15,10 @@ It does not redefine runtime safety or tool executors.
   indistinguishable from a model failure, and the taxonomy would record a
   `model_decision` fault for a defect in the task.
 - `smoke-tasks.ts` defines the first ten deterministic Day 1 tasks.
+- `travel-tasks.ts` extends that coverage with goals the tool surface cannot
+  satisfy, and workflows deep enough to need four or five calls. Each task is
+  there because it tests something the smoke suite does not; volume alone would
+  inflate a pass rate without measuring more.
 - `deployment-scenarios.ts` defines the deployment-parity outcome contract and
   validates runner observations against its required tools and outcomes.
 - `failure-taxonomy.md` keeps model, adapter, tool and runtime defects
