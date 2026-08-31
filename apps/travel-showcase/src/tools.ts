@@ -13,6 +13,7 @@
  */
 
 import { ACTIVITIES, DESTINATIONS, FLIGHTS, STAYS } from './inventory.js';
+import { readBoolean, readNumber, readString } from './input.js';
 import { TravelDomainError } from './state.js';
 import type { AddItemRequest, TripStore } from './state.js';
 import type { ActivityTag, CityId } from './types.js';
@@ -97,21 +98,6 @@ function validateExecutorValue(key: string, value: unknown, schema: Record<strin
       throw new TravelDomainError('invalid_request', `${key} must be at most ${schema.maximum}.`);
     }
   }
-}
-
-function readString(input: JsonObject, key: string): string | undefined {
-  const value = input[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function readNumber(input: JsonObject, key: string): number | undefined {
-  const value = input[key];
-  return typeof value === 'number' ? value : undefined;
-}
-
-function readBoolean(input: JsonObject, key: string): boolean | undefined {
-  const value = input[key];
-  return typeof value === 'boolean' ? value : undefined;
 }
 
 function requireString(input: JsonObject, key: string): string {

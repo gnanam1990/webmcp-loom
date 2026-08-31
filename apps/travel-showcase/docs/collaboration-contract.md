@@ -19,7 +19,7 @@ Six regions, in reading order.
 
 The itinerary board is the primary output. The trace is a supporting surface and must never become the place where the result is read — if the board and budget were hidden, the demo should lose its point.
 
-Three of these behaviours — undo, the backend indicator, and the highlight treatment described below — are Day 5 scope rather than Day 3. They are specified here because they change the shape of the board and the trace, and retrofitting them into a finished UI is more expensive than allowing for them now.
+Two of these behaviours — undo and the highlight treatment described below — are Day 5 scope rather than Day 3. They are specified here because they change the shape of the board and the trace, and retrofitting them into a finished UI is more expensive than allowing for them now.
 
 ## The hero flow
 
