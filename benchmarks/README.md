@@ -7,7 +7,8 @@ It does not redefine runtime safety or tool executors.
 
 - `schema.ts` defines task, result, metric and failure records.
 - `smoke-tasks.ts` defines the first ten deterministic Day 1 tasks.
-- `deployment-scenarios.ts` defines the deployment-parity outcome contract.
+- `deployment-scenarios.ts` defines the deployment-parity outcome contract and
+  validates runner observations against its required tools and outcomes.
 - `failure-taxonomy.md` keeps model, adapter, tool and runtime defects
   separately attributable.
 - `model-matrix.md` records candidate local models and the gates that must pass
@@ -15,7 +16,9 @@ It does not redefine runtime safety or tool executors.
 - `webmcp-fixture.test.ts` proves discovery, approval and execution through the
   real runtime WebMCP bridge.
 
-The runner, local adapter and retrieval baseline are Day 2 work. They must
+The executable deployment runner, local adapter and retrieval baseline are Day
+2 work. The scenario assertions are foundation contracts, not evidence that a
+deployment run has occurred. The runner must
 consume these contracts and the runtime's public `RuntimeModel` contract; they
 must not add a second execution or approval policy.
 

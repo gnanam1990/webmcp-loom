@@ -1,7 +1,8 @@
 # Runtime-prompt v2 local rerun — 2026-08-28
 
 > **Evidence status:** exploratory prompt probe, not selection-grade benchmark
-> evidence. Hardware, operating system, exact llama.cpp build, artifact
+> evidence. The exact built runtime source/package revision, hardware,
+> operating system, exact llama.cpp build, artifact
 > digests, peak memory, and runner-produced assertion records were not retained
 > for this rerun. The latency observations below must be repeated with those
 > fields before they can satisfy the measurement protocol.
@@ -14,8 +15,8 @@ must merge before this becomes the application acceptance suite.
 
 ## Prompt changes
 
-The runtime prompt now makes four requirements explicit, including immediately
-before the model output:
+The generated prompt captured during this probe made four requirements
+explicit, including immediately before the model output:
 
 - tool descriptions and schemas are capability metadata, not application facts;
 - tool input may contain only `inputSchema.properties` keys, and a zero-property

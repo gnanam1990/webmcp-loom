@@ -38,4 +38,36 @@ describe('benchmark foundation', () => {
       .toEqual({ category: 'adapter', retryable: true });
     expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(29);
   });
+
+  it('rejects whitespace-only tool names and identifier-reuse fields', () => {
+    const task = SMOKE_TASKS[0];
+    if (task === undefined) throw new Error('Expected a smoke-task fixture.');
+
+    expect(() => assertValidBenchmarkTask({
+      ...task,
+      expected: {
+        ...task.expected,
+        toolCalls: { ...task.expected.toolCalls, requiredToolNames: [' '] },
+      },
+    })).toThrow('empty required tool');
+    expect(() => assertValidBenchmarkTask({
+      ...task,
+      expected: {
+        ...task.expected,
+        toolCalls: { ...task.expected.toolCalls, forbiddenToolNames: ['\t'] },
+      },
+    })).toThrow('empty forbidden tool');
+    expect(() => assertValidBenchmarkTask({
+      ...task,
+      expected: {
+        ...task.expected,
+        identifierReuses: [{
+          sourceTool: 'get_itinerary',
+          sourceOutputPath: ' ',
+          consumerTool: 'move_itinerary_item',
+          consumerInputPath: '$.input.itemId',
+        }],
+      },
+    })).toThrow('incomplete identifier-reuse assertion');
+  });
 });

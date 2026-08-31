@@ -24,7 +24,7 @@ runtime prompt/schema.
 | Model | Passed | Result |
 | --- | ---: | --- |
 | LFM2.5-1.2B Q4_K_M | 4 / 5 | Read, stay, move, and justified-final scenarios passed. For a flight, it selected the right id/revision/date but the wrong permitted `kind`. |
-| Qwen3.5-0.8B Q4_0 | 3 / 5 | Stay, move, and justified-final scenarios passed. It prematurely finalized the live read and added a harmless-but-unwanted `nights: 0` to the flight. |
+| Qwen3.5-0.8B Q4_0 | 3 / 5 | Stay, move, and justified-final scenarios passed. It prematurely finalized the live read; its flight call added undeclared `nights: 0`, so that decision failed schema validation. |
 | G9v3-3B Q4_K_M | inconclusive | The server did not return a complete harness result in the run window. |
 
 For comparison, the broader five-tool prompt without retrieval left both LFM2.5
