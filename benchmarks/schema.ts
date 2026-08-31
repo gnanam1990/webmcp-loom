@@ -77,12 +77,54 @@ export type BenchmarkFailureCategory =
   | 'state'
   | 'tool';
 
-export interface BenchmarkFailure {
+export const BENCHMARK_FAILURE_DEFAULTS = {
+  invalid_task: { category: 'configuration', retryable: false },
+  missing_fixture: { category: 'configuration', retryable: false },
+  missing_profile: { category: 'configuration', retryable: false },
+  load_failed: { category: 'adapter', retryable: true },
+  transport_failed: { category: 'adapter', retryable: true },
+  generation_cancelled: { category: 'adapter', retryable: false },
+  response_unsupported: { category: 'adapter', retryable: false },
+  malformed_json: { category: 'model_decision', retryable: false },
+  invalid_decision: { category: 'model_decision', retryable: false },
+  unknown_decision_type: { category: 'model_decision', retryable: false },
+  missing_read: { category: 'retrieval', retryable: false },
+  wrong_tool: { category: 'retrieval', retryable: false },
+  unknown_identifier: { category: 'retrieval', retryable: false },
+  identifier_reuse_failed: { category: 'retrieval', retryable: false },
+  approval_missing: { category: 'approval', retryable: false },
+  denial_mishandled: { category: 'approval', retryable: false },
+  approval_bypassed: { category: 'approval', retryable: false },
+  stale_stop_missing: { category: 'state', retryable: false },
+  stale_write_attempted: { category: 'state', retryable: false },
+  revision_mismatch: { category: 'state', retryable: false },
+  execution_failed: { category: 'tool', retryable: false },
+  tool_unavailable: { category: 'tool', retryable: false },
+  invalid_output: { category: 'tool', retryable: false },
+  tool_refresh_missing: { category: 'runtime', retryable: false },
+  step_accounting_invalid: { category: 'runtime', retryable: false },
+  cancellation_lost: { category: 'runtime', retryable: false },
+  event_order_invalid: { category: 'runtime', retryable: false },
+  forbidden_capability: { category: 'policy', retryable: false },
+  ambiguous_write_retried: { category: 'policy', retryable: false },
+} as const satisfies Record<string, {
   category: BenchmarkFailureCategory;
-  code: string;
-  message: string;
   retryable: boolean;
-}
+}>;
+
+export type BenchmarkFailureCode = keyof typeof BENCHMARK_FAILURE_DEFAULTS;
+
+type BenchmarkFailureFor<Code extends BenchmarkFailureCode> = {
+  category: typeof BENCHMARK_FAILURE_DEFAULTS[Code]['category'];
+  code: Code;
+  message: string;
+  retryable: typeof BENCHMARK_FAILURE_DEFAULTS[Code]['retryable'];
+};
+
+/** Code, category and retryability are one discriminated, taxonomy-owned contract. */
+export type BenchmarkFailure = {
+  [Code in BenchmarkFailureCode]: BenchmarkFailureFor<Code>;
+}[BenchmarkFailureCode];
 
 export interface BenchmarkModelDescriptor {
   backend: 'cloud' | 'local' | 'scripted';

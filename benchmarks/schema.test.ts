@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertValidBenchmarkTask } from './schema.js';
+import { BENCHMARK_FAILURE_DEFAULTS, assertValidBenchmarkTask } from './schema.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
 
 describe('benchmark foundation', () => {
@@ -29,5 +29,13 @@ describe('benchmark foundation', () => {
       ...cancelled,
       expected: { ...cancelled.expected, allowedStatuses: ['cancelled'] },
     })).not.toThrow();
+  });
+
+  it('keeps normalized failure codes tied to their taxonomy defaults', () => {
+    expect(BENCHMARK_FAILURE_DEFAULTS.generation_cancelled)
+      .toEqual({ category: 'adapter', retryable: false });
+    expect(BENCHMARK_FAILURE_DEFAULTS.load_failed)
+      .toEqual({ category: 'adapter', retryable: true });
+    expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(29);
   });
 });

@@ -7,7 +7,6 @@
     }
   },
   "include": [
-    "src/**/*.ts",
-    "../runtime/src/**/*.ts"
+    "src/**/*.ts"
   ]
 }

@@ -12,6 +12,8 @@
  */
 
 import { runAgentRuntime } from '@webmcp-loom/runtime';
+import { money } from '../format.js';
+import { readNumber, readString } from '../input.js';
 import { ACTIVITIES, DESTINATIONS, FLIGHTS, STAYS } from '../inventory.js';
 import { createTripStore } from '../state.js';
 import { createTravelTools } from '../tools.js';
@@ -62,29 +64,16 @@ export interface Session {
   cancel(): void;
   /** A human edit from the board. Applies unconditionally and moves the revision. */
   removeItem(itemId: string): void;
+  /** A keyboard- or pointer-originated board edit with the same authority. */
+  moveItem(itemId: string, toDate: string): void;
   reset(): void;
 }
 
-const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 export const MAX_AGENT_STEPS = 6;
-
-function money(value: number): string {
-  return `₹${INR.format(value)}`;
-}
 
 function cityName(cityId: unknown): string {
   const found = DESTINATIONS.find((entry) => entry.id === cityId);
   return found?.name ?? String(cityId);
-}
-
-function readString(input: JsonObject, key: string): string | undefined {
-  const value = input[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function readNumber(input: JsonObject, key: string): number | undefined {
-  const value = input[key];
-  return typeof value === 'number' ? value : undefined;
 }
 
 /**
@@ -290,8 +279,10 @@ export function createSession(store: TripStore = createTripStore()): Session {
             status = 'awaiting_approval';
             emit();
           }).then((approved) => {
-            status = 'running';
-            emit();
+            if (approved) {
+              status = 'running';
+              emit();
+            }
             return approved;
           }),
         });
@@ -341,6 +332,12 @@ export function createSession(store: TripStore = createTripStore()): Session {
 
     removeItem: (itemId: string) => {
       store.editAsHuman((items) => items.filter((item) => item.id !== itemId));
+      emit();
+    },
+
+    moveItem: (itemId: string, toDate: string) => {
+      const revision = store.getState().revision;
+      store.moveItem(revision, itemId, toDate);
       emit();
     },
 

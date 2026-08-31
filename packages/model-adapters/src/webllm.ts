@@ -6,6 +6,8 @@ interface WebLlmCompletion {
 }
 
 export interface WebLlmRuntimeModelOptions {
+  /** Maximum time to wait for an interrupted engine to become safe to reuse. */
+  cancellationTimeoutMs?: number;
   model: string;
   maxTokens?: number;
   onLoadProgress?: (progress: { progress: number; text: string }) => void;
@@ -17,6 +19,10 @@ export interface WebLlmRuntimeModelOptions {
 export async function createWebLlmRuntimeModel(
   options: WebLlmRuntimeModelOptions,
 ): Promise<RuntimeModel> {
+  const cancellationTimeoutMs = options.cancellationTimeoutMs ?? 10_000;
+  if (!Number.isFinite(cancellationTimeoutMs) || cancellationTimeoutMs <= 0) {
+    throw new Error('cancellationTimeoutMs must be a positive finite number.');
+  }
   if (typeof navigator === 'undefined' || navigator.gpu === undefined) {
     throw new Error('WebGPU is unavailable in this browser.');
   }
@@ -26,11 +32,13 @@ export async function createWebLlmRuntimeModel(
     },
   });
   let generationTail: Promise<void> = Promise.resolve();
+  let terminalFailure: Error | null = null;
   return {
     generate(request) {
-      const generation = generationTail.then(async () => {
+      const scheduled = generationTail.then(() => {
+        if (terminalFailure !== null) throw terminalFailure;
         throwIfAborted(request.signal);
-        const completion = await runWithEngineCancellation<WebLlmCompletion>(
+        return runWithEngineCancellation<WebLlmCompletion>(
           () => engine.chat.completions.create({
             stream: false,
             messages: [{ role: 'user', content: request.prompt }],
@@ -45,15 +53,24 @@ export async function createWebLlmRuntimeModel(
           }) as Promise<WebLlmCompletion>,
           request.signal,
           () => engine.interruptGenerate(),
+          cancellationTimeoutMs,
         );
+      });
+      const generation = scheduled.then(async ({ result }) => {
+        const completion = await result;
         const content = completion.choices[0]?.message.content;
         if (typeof content !== 'string') {
           throw new Error('WebLLM returned no assistant message content.');
         }
         return content;
       });
-      generationTail = generation.then(() => undefined, () => undefined);
-      return generation;
+      generationTail = scheduled.then(({ drain }) => drain).catch((error: unknown) => {
+        if (error instanceof WebLlmCancellationTimeoutError) terminalFailure = error;
+      });
+      // The caller-facing abort race can settle before a queued generation is
+      // reached. Keep the later internal rejection observed as well.
+      void generation.catch(() => undefined);
+      return rejectWhenAborted(generation, request.signal);
     },
   };
 }
@@ -66,6 +83,20 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw abortError();
 }
 
+class WebLlmCancellationTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`WebLLM did not stop within ${timeoutMs}ms after cancellation; reload the model before retrying.`);
+    this.name = 'WebLlmCancellationTimeoutError';
+  }
+}
+
+interface EngineGeneration<T> {
+  /** Caller-facing result; cancellation rejects this immediately. */
+  result: Promise<T>;
+  /** Queue-facing safety gate; later generations wait for this. */
+  drain: Promise<void>;
+}
+
 /**
  * WebLLM owns one mutable generation pipeline per loaded model. Keep calls
  * serialized and do not release the next caller until an in-flight interrupt
@@ -75,44 +106,84 @@ function runWithEngineCancellation<T>(
   start: () => Promise<T>,
   signal: AbortSignal | undefined,
   interrupt: () => Promise<void>,
-): Promise<T> {
-  if (signal === undefined) return start();
-  if (signal.aborted) return Promise.reject(abortError());
+  timeoutMs: number,
+): EngineGeneration<T> {
+  if (signal?.aborted) {
+    return { result: Promise.reject(abortError()), drain: Promise.resolve() };
+  }
 
-  return new Promise<T>((resolve, reject) => {
+  let work: Promise<T>;
+  try {
+    work = start();
+  } catch (error) {
+    return { result: Promise.reject(error), drain: Promise.resolve() };
+  }
+  if (signal === undefined) {
+    return { result: work, drain: work.then(() => undefined, () => undefined) };
+  }
+
+  let resolveDrain!: () => void;
+  let rejectDrain!: (error: Error) => void;
+  const drain = new Promise<void>((resolve, reject) => {
+    resolveDrain = resolve;
+    rejectDrain = reject;
+  });
+  const result = new Promise<T>((resolve, reject) => {
     let aborting = false;
-    let work: Promise<T>;
     const cleanup = (): void => signal.removeEventListener('abort', onAbort);
     const onAbort = (): void => {
       if (aborting) return;
       aborting = true;
+      cleanup();
+      reject(abortError());
       const interruption = Promise.resolve().then(interrupt);
+      const timeout = setTimeout(() => {
+        rejectDrain(new WebLlmCancellationTimeoutError(timeoutMs));
+      }, timeoutMs);
       void Promise.allSettled([interruption, work]).then(() => {
-        cleanup();
-        reject(abortError());
+        clearTimeout(timeout);
+        resolveDrain();
       });
     };
 
-    try {
-      work = start();
-    } catch (error) {
-      reject(error);
-      return;
-    }
     signal.addEventListener('abort', onAbort, { once: true });
     if (signal.aborted) onAbort();
     void work.then(
       (value) => {
         if (aborting) return;
-        if (signal.aborted) {
-          onAbort();
-          return;
-        }
+        cleanup();
+        resolve(value);
+        resolveDrain();
+      },
+      (error: unknown) => {
+        if (aborting) return;
+        cleanup();
+        reject(error);
+        resolveDrain();
+      },
+    );
+  });
+  return { result, drain };
+}
+
+/** Rejects a queued caller promptly without allowing it to overtake the engine queue. */
+function rejectWhenAborted<T>(source: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return source;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = (): void => signal.removeEventListener('abort', onAbort);
+    const onAbort = (): void => {
+      cleanup();
+      reject(abortError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void source.then(
+      (value) => {
         cleanup();
         resolve(value);
       },
       (error: unknown) => {
-        if (aborting) return;
         cleanup();
         reject(error);
       },

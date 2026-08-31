@@ -201,7 +201,6 @@ h2 { font-size: 1.05rem; }
 }
 
 .empty { margin: 0; color: var(--ink-soft); max-width: 48ch; }
-.empty--small { font-size: 0.9rem; }
 
 /* Board ------------------------------------------------------------------ */
 
@@ -221,7 +220,7 @@ h2 { font-size: 1.05rem; }
 
 .card {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -245,7 +244,19 @@ h2 { font-size: 1.05rem; }
 .card__label { font-weight: 560; min-width: 0; }
 .card__price { font-variant-numeric: tabular-nums; font-weight: 620; }
 
-.card__remove {
+.card__actions, .card__move { display: flex; align-items: center; gap: 8px; }
+.card__move select {
+  min-height: 44px;
+  max-width: 132px;
+  padding: 7px 8px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.card__remove, .card__move-button {
   padding: 7px 12px;
   min-height: 44px;
   font: inherit;
@@ -257,13 +268,15 @@ h2 { font-size: 1.05rem; }
   cursor: pointer;
 }
 
-.card__remove:hover:not(:disabled) { color: var(--over); border-color: var(--line); }
-.card__remove:disabled { opacity: 0.4; cursor: not-allowed; }
+.card__remove:hover { color: var(--over); border-color: var(--line); }
+.card__move-button:hover:not(:disabled) { color: var(--accent); border-color: var(--line); }
+.card__move-button:disabled, .card__move select:disabled { opacity: 0.55; cursor: not-allowed; }
 
 @media (max-width: 560px) {
   .card { grid-template-columns: auto 1fr; }
   .card__price { grid-column: 2; }
-  .card__remove { grid-column: 2; justify-self: start; }
+  .card__actions { grid-column: 1 / -1; flex-wrap: wrap; justify-self: stretch; }
+  .card__move { flex: 1 1 auto; }
 }
 
 /* Budget ----------------------------------------------------------------- */

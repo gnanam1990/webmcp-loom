@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSession } from './session.js';
-import { formatDay, projectApprovalBudget, traceAnnouncement } from './App.js';
+import { budgetMeterLabel, formatDay, projectApprovalBudget, traceAnnouncement } from './App.js';
 import type { SessionSnapshot } from './session.js';
 
 describe('travel application presentation helpers', () => {
@@ -62,5 +62,15 @@ describe('travel application presentation helpers', () => {
       state: 'awaiting_approval',
       detail: 'Waiting for your approval.',
     })).toBe('Step 3: Add Sakura Hotel — waiting for you — Waiting for your approval.');
+  });
+
+  it('announces the real spend when the visual budget meter is capped', () => {
+    const budget = createSession().getSnapshot().budget;
+    expect(budgetMeterLabel({
+      ...budget,
+      committedInr: 200_000,
+      remainingInr: -50_000,
+      overBudget: true,
+    })).toBe('₹2,00,000 committed; ₹50,000 over budget');
   });
 });
