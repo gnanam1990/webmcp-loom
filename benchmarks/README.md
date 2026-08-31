@@ -10,10 +10,11 @@ It does not redefine runtime safety or tool executors.
   through the domain write path so a starting state cannot describe a trip the
   domain would reject.
 - `oracles.ts` holds one reference solution per task, and `oracles.test.ts`
-  executes each against the real tool surface. This proves a task is solvable
-  before a model is asked to solve it: without it an unsatisfiable fixture is
-  indistinguishable from a model failure, and the taxonomy would record a
-  `model_decision` fault for a defect in the task.
+  executes each against the real tool surface. This proves the reference call
+  sequence and its declared constraints are executable before a model is asked
+  to solve it: without it an unsatisfiable fixture is indistinguishable from a
+  model failure, and the taxonomy would record a `model_decision` fault for a
+  defect in the task.
 - `smoke-tasks.ts` defines the first ten deterministic Day 1 tasks.
 - `travel-tasks.ts` extends that coverage with goals the tool surface cannot
   satisfy, and workflows deep enough to need four or five calls. Each task is
