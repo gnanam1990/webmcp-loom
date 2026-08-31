@@ -29,11 +29,11 @@ It does not redefine runtime safety or tool executors.
 - `webmcp-fixture.test.ts` proves discovery, approval and execution through the
   real runtime WebMCP bridge.
 
-The executable deployment runner, local adapter and retrieval baseline are Day
-2 work. The scenario assertions are foundation contracts, not evidence that a
-deployment run has occurred. The runner must
-consume these contracts and the runtime's public `RuntimeModel` contract; they
-must not add a second execution or approval policy.
+`runner.ts` is the deterministic single-task runner. It executes a supplied
+`RuntimeModel` through the public runtime contract and the real travel tools,
+then records tool traces, observable assertions, runtime outcome and metrics.
+It deliberately does not add a second execution or approval policy. A local
+adapter, retrieval baseline and batch report command remain subsequent work.
 
 ## Result reporting
 
