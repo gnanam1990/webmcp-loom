@@ -2,7 +2,7 @@ import { CreateMLCEngine } from '@mlc-ai/web-llm';
 import type { RuntimeModel } from '@webmcp-loom/runtime';
 
 interface WebLlmCompletion {
-  choices: readonly { message: { content: unknown } }[];
+  choices: readonly { message?: { content?: unknown } }[];
 }
 
 export interface WebLlmRuntimeModelOptions {
@@ -58,7 +58,7 @@ export async function createWebLlmRuntimeModel(
       });
       const generation = scheduled.then(async ({ result }) => {
         const completion = await result;
-        const content = completion.choices[0]?.message.content;
+        const content = completion.choices[0]?.message?.content;
         if (typeof content !== 'string') {
           throw new Error('WebLLM returned no assistant message content.');
         }
@@ -105,7 +105,7 @@ interface EngineGeneration<T> {
 function runWithEngineCancellation<T>(
   start: () => Promise<T>,
   signal: AbortSignal | undefined,
-  interrupt: () => Promise<void>,
+  interrupt: () => void | Promise<void>,
   timeoutMs: number,
 ): EngineGeneration<T> {
   if (signal?.aborted) {

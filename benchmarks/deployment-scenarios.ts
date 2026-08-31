@@ -1,8 +1,17 @@
+import type { ExpectedRunStatus } from './schema.js';
+
 export interface DeploymentScenario {
   id: string;
   requiredOutcome: 'approved_write' | 'cancelled' | 'completed' | 'denied' | 'recovery' | 'stale_state' | 'step_limit';
   requiredTools: readonly string[];
   title: string;
+}
+
+export interface DeploymentScenarioObservation {
+  approvedWrite: boolean;
+  outcome: ExpectedRunStatus;
+  recoveredFromFreshRevision: boolean;
+  toolNames: readonly string[];
 }
 
 /** Deployment-parity cases; the runner must assert real WebMCP trace and domain state. */
@@ -18,3 +27,37 @@ export const DEPLOYMENT_SCENARIOS: readonly DeploymentScenario[] = [
   { id: 'cancelled-run', title: 'Cancel without an extra write', requiredOutcome: 'cancelled', requiredTools: [] },
   { id: 'bounded-run', title: 'Stop at the runtime step limit', requiredOutcome: 'step_limit', requiredTools: [] },
 ];
+
+/**
+ * Enforces the deployment-parity declarations against a runner observation.
+ * This is the shared assertion boundary; it does not claim that the Day 2
+ * deployment runner or its measurements already exist.
+ */
+export function assertDeploymentScenarioObservation(
+  scenario: DeploymentScenario,
+  observation: DeploymentScenarioObservation,
+): void {
+  for (const requiredTool of scenario.requiredTools) {
+    if (!observation.toolNames.includes(requiredTool)) {
+      throw new Error(`Deployment scenario ${scenario.id} did not call ${requiredTool}.`);
+    }
+  }
+
+  if (scenario.requiredOutcome === 'approved_write') {
+    if (observation.outcome !== 'completed' || !observation.approvedWrite) {
+      throw new Error(`Deployment scenario ${scenario.id} requires a completed approved write.`);
+    }
+    return;
+  }
+  if (scenario.requiredOutcome === 'recovery') {
+    if (observation.outcome !== 'completed' || !observation.recoveredFromFreshRevision) {
+      throw new Error(`Deployment scenario ${scenario.id} requires recovery from a fresh revision.`);
+    }
+    return;
+  }
+  if (observation.outcome !== scenario.requiredOutcome) {
+    throw new Error(
+      `Deployment scenario ${scenario.id} expected ${scenario.requiredOutcome}, received ${observation.outcome}.`,
+    );
+  }
+}

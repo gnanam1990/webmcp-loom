@@ -1,5 +1,10 @@
 # Small-model retrieval and schema probe — 2026-08-28
 
+> **Evidence status:** exploratory harness probe, not selection-grade benchmark
+> evidence. The exact built runtime revision was not retained, so the observed
+> prompt/schema behavior below must be repeated against a recorded revision
+> before it can support a release or model-selection claim.
+
 ## Why this probe exists
 
 Prompt-only tuning did not make the small models reliably multi-step. In a
@@ -11,16 +16,16 @@ result.
 
 ## Safety improvement: tool-specific decision schemas
 
-The runtime now derives the model response schema from the tools available at
-that exact decision. A model can therefore emit only:
+The probe harness supplied a model response schema derived from the tools
+available at that decision. Under that observed schema, a model could emit only:
 
 - `final`; or
 - one current tool name, with that tool's actual input schema.
 
-This prevents an otherwise schema-valid envelope from inventing a tool that is
-not currently available. Runtime validation remains the execution boundary;
-the constrained response schema reduces invalid output before it reaches that
-boundary.
+In the probe, this prevented an otherwise schema-valid envelope from inventing
+an unavailable tool. Runtime validation remained the execution boundary. This
+is an observation from an unbound harness run, not proof about the current
+runtime source revision.
 
 ## Retrieval probe
 

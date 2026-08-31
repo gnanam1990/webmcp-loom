@@ -186,11 +186,17 @@ export function assertValidBenchmarkTask(task: BenchmarkTask): void {
   if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min) {
     throw new Error(`Benchmark task ${task.id} has invalid tool-call bounds.`);
   }
+  if (requiredToolNames.some((tool) => !tool.trim())) {
+    throw new Error(`Benchmark task ${task.id} has an empty required tool.`);
+  }
   if (new Set(requiredToolNames).size !== requiredToolNames.length) {
     throw new Error(`Benchmark task ${task.id} repeats a required tool.`);
   }
   if (requiredToolNames.length > min || requiredToolNames.length > max) {
     throw new Error(`Benchmark task ${task.id} cannot require more tools than its call bounds allow.`);
+  }
+  if (forbiddenToolNames.some((tool) => !tool.trim())) {
+    throw new Error(`Benchmark task ${task.id} has an empty forbidden tool.`);
   }
   if (new Set(forbiddenToolNames).size !== forbiddenToolNames.length) {
     throw new Error(`Benchmark task ${task.id} repeats a forbidden tool.`);
@@ -205,7 +211,8 @@ export function assertValidBenchmarkTask(task: BenchmarkTask): void {
     throw new Error(`Benchmark task ${task.id} repeats an allowed runtime status.`);
   }
   for (const reuse of task.expected.identifierReuses) {
-    if (!reuse.sourceTool || !reuse.sourceOutputPath || !reuse.consumerTool || !reuse.consumerInputPath) {
+    if (![reuse.sourceTool, reuse.sourceOutputPath, reuse.consumerTool, reuse.consumerInputPath]
+      .every((value) => value.trim())) {
       throw new Error(`Benchmark task ${task.id} has an incomplete identifier-reuse assertion.`);
     }
   }

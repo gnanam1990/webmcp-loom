@@ -51,6 +51,43 @@ describe('createWebLlmRuntimeModel', () => {
       .rejects.toThrow('WebGPU is unavailable');
   });
 
+  it('fails clearly when WebLLM returns a choice without a message', async () => {
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: vi.fn().mockResolvedValue({ choices: [{}] }) } },
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const model = await createWebLlmRuntimeModel({ model: 'fixture' });
+
+    await expect(model.generate(request('missing message')))
+      .rejects.toThrow('WebLLM returned no assistant message content.');
+  });
+
+  it('supports a synchronous engine interrupt', async () => {
+    let finishCompletion: ((value: WebLlmTestCompletion) => void) | undefined;
+    const complete = vi.fn(() => new Promise<WebLlmTestCompletion>((resolve) => {
+      finishCompletion = resolve;
+    }));
+    const interruptGenerate = vi.fn();
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+      interruptGenerate,
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const model = await createWebLlmRuntimeModel({ model: 'fixture' });
+    const controller = new AbortController();
+    const cancelledResult = model.generate(request('cancel', controller.signal)).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+
+    controller.abort();
+    finishCompletion?.(completion('cancelled'));
+
+    await expect(cancelledResult).resolves.toMatchObject({ name: 'AbortError' });
+    expect(interruptGenerate).toHaveBeenCalledOnce();
+  });
+
   it('interrupts an in-flight generation before releasing the next caller', async () => {
     let finishInterrupt: (() => void) | undefined;
     let finishFirstCompletion: ((value: {
