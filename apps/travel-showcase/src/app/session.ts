@@ -49,6 +49,55 @@ export interface TraceLine {
   detail?: string;
 }
 
+/** How the person would pick this backend, not how the code names it. */
+export interface BackendDescriptor {
+  id: string;
+  label: string;
+  kind: 'cloud' | 'local' | 'scripted';
+  detail: string;
+}
+
+/**
+ * Loading and failure are distinct from ready on purpose. A backend that has
+ * not finished loading is not the same as one that is ready, and a run started
+ * against a loading backend must say so rather than appearing to hang.
+ */
+export type BackendState =
+  | { status: 'failed'; backend: BackendDescriptor; error: string }
+  | { status: 'loading'; backend: BackendDescriptor }
+  | { status: 'ready'; backend: BackendDescriptor };
+
+export const SCRIPTED_BACKEND: BackendDescriptor = Object.freeze({
+  id: 'scripted',
+  kind: 'scripted',
+  label: 'Scripted',
+  detail: 'A deterministic stand-in rather than a language model. The runtime is model-neutral, so a local or cloud backend replaces it without changing this application.',
+});
+
+/**
+ * What a single undo would reverse.
+ *
+ * `blockedReason` is non-null when undo is unavailable, so the interface can
+ * explain why rather than presenting a control that silently does nothing.
+ */
+export interface UndoableChange {
+  label: string;
+  blockedReason: string | null;
+}
+
+/**
+ * A short-lived cue marking what just changed.
+ *
+ * `token` increments on every commit so the interface can restart its decay
+ * even when the same items change twice in a row. Highlights never carry
+ * information that is not also readable from the board and the trace.
+ */
+export interface HighlightCue {
+  itemIds: readonly string[];
+  budget: boolean;
+  token: number;
+}
+
 export interface SessionSnapshot {
   status: SessionStatus;
   trip: TripState;
@@ -56,6 +105,9 @@ export interface SessionSnapshot {
   trace: readonly TraceLine[];
   pendingApproval: AgentApprovalRequest | null;
   progress: { currentStep: number; maximumSteps: number } | null;
+  backend: BackendState;
+  undoable: UndoableChange | null;
+  highlight: HighlightCue | null;
   /** Final message, denial note, or the reason a run stopped. */
   note: string | null;
 }
@@ -71,6 +123,16 @@ export interface Session {
   removeItem(itemId: string): void;
   /** A keyboard- or pointer-originated board edit with the same authority. */
   moveItem(itemId: string, toDate: string): void;
+  /**
+   * Reverses the last committed change, as a human edit.
+   *
+   * Undo moves the revision forward rather than restoring an older one: a
+   * rewound counter would make an already-stale agent decision look fresh
+   * again, which is the exact guarantee the store exists to provide. Depth is
+   * one step and there is no redo, because redo implies a second history the
+   * domain does not model.
+   */
+  undo(): void;
   reset(): void;
 }
 
@@ -158,9 +220,34 @@ function scriptFor(trip: TripState): readonly typeof HERO_SCRIPT[number][] {
   return trip.items.length === 0 ? HERO_SCRIPT : REPAIR_SCRIPT;
 }
 
+/** Names a committed change in the same terms the trace and the board use. */
+function describeChange(
+  added: readonly ItineraryItem[],
+  removed: readonly ItineraryItem[],
+  changed: readonly ItineraryItem[],
+  moved: boolean,
+): string {
+  const first = added[0] ?? changed[0] ?? removed[0];
+  const label = first?.label ?? 'the plan';
+  const total = added.length + removed.length + changed.length;
+  const extra = total > 1 ? ` and ${total - 1} other change${total > 2 ? 's' : ''}` : '';
+  if (added.length > 0) return `staging ${label}${extra}`;
+  if (changed.length > 0) return `${moved ? 'moving' : 'updating'} ${label}${extra}`;
+  return `removing ${label}${extra}`;
+}
+
+/** Itinerary items are flat, validated records, so field equality is sufficient. */
+function sameItem(left: ItineraryItem, right: ItineraryItem): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every(([key, value]) => Object.is(value, right[key as keyof ItineraryItem]));
+}
+
 export function createSession(
   store: TripStore = createTripStore(),
   tools: readonly RuntimeTool[] = createTravelTools(store),
+  backend: BackendState = { status: 'ready', backend: SCRIPTED_BACKEND },
 ): Session {
   const listeners = new Set<() => void>();
 
@@ -170,6 +257,13 @@ export function createSession(
   let pending: { request: AgentApprovalRequest; settle: (approved: boolean) => void } | null = null;
   let controller: AbortController | null = null;
   let currentStep = 0;
+
+  let previousItems: readonly ItineraryItem[] = store.getState().items;
+  let previousBudget = store.getBudgetSummary();
+  let undoTarget: { label: string; items: readonly ItineraryItem[] } | null = null;
+  let highlight: HighlightCue | null = null;
+  let highlightToken = 0;
+  let undoing = false;
 
   /**
    * Snapshots are cached and rebuilt only when something changed. React's
@@ -182,10 +276,58 @@ export function createSession(
     cached = null;
     for (const listener of listeners) listener();
   };
+/**
+   * Every accepted commit reaches here — an approved in-app write, a human edit
+   * from the board, and an external WebMCP write alike — so undo and the
+   * highlight cue behave identically whichever agent caused the change.
+   */
   store.subscribe((source) => {
-    // The runtime's terminal tool event publishes an in-app write together
-    // with its updated trace. External WebMCP and human writes have no such
-    // event, so they must invalidate the snapshot immediately here.
+    const current = store.getState().items;
+    const byId = (entries: readonly ItineraryItem[]): Map<string, ItineraryItem> => (
+      new Map(entries.map((item) => [item.id, item]))
+    );
+    const before = byId(previousItems);
+    const after = byId(current);
+    const previousIndex = new Map(previousItems.map((item, index) => [item.id, index]));
+    const currentBudget = store.getBudgetSummary();
+
+    const added = current.filter((item) => !before.has(item.id));
+    const removed = previousItems.filter((item) => !after.has(item.id));
+    // Removing or adding an item naturally shifts later indexes; that is not a
+    // reorder of those surviving items. Only compare ordering when membership
+    // stayed constant across the commit.
+    const membershipChanged = added.length > 0 || removed.length > 0;
+    const changed = current.filter((item, index) => {
+      const original = before.get(item.id);
+      return original !== undefined && (
+        !sameItem(original, item) || (!membershipChanged && previousIndex.get(item.id) !== index)
+      );
+    });
+    const moved = changed.some((item) => before.get(item.id)?.date !== item.date);
+    const crossedBudgetCap = previousBudget.overBudget !== currentBudget.overBudget;
+
+    if (added.length > 0 || removed.length > 0 || changed.length > 0) {
+      // An undo is not itself undoable: depth is one step and redo is out of scope.
+      undoTarget = undoing
+        ? null
+        : { label: describeChange(added, removed, changed, moved), items: previousItems };
+      highlightToken += 1;
+      highlight = {
+        itemIds: [...added, ...changed].map((item) => item.id),
+        // A removal has no surviving card to mark, so the budget carries the cue.
+        budget: removed.length > 0 || crossedBudgetCap,
+        token: highlightToken,
+      };
+    }
+
+    previousItems = current;
+    previousBudget = currentBudget;
+
+    // The cue and the undo record are computed for every source above, but the
+    // notification is not. The runtime's terminal tool event publishes an in-app
+    // write together with its updated trace and emits then; emitting here too
+    // would double-notify. External WebMCP and human writes have no such event,
+    // so they must invalidate the snapshot immediately.
     if (source !== 'in_app_runtime') emit();
   });
 
@@ -251,6 +393,14 @@ export function createSession(
         progress: status === 'running' || status === 'awaiting_approval'
           ? { currentStep, maximumSteps: MAX_AGENT_STEPS }
           : null,
+        backend,
+        undoable: undoTarget === null ? null : {
+          label: undoTarget.label,
+          blockedReason: status === 'running' || status === 'awaiting_approval'
+            ? 'Undo is unavailable while the agent is working, because reversing the plan mid-run would stop it.'
+            : null,
+        },
+        highlight,
         note,
       };
       return cached;
@@ -263,6 +413,15 @@ export function createSession(
 
     run: async (goal: string): Promise<void> => {
       if (status === 'running' || status === 'awaiting_approval') return;
+      if (backend.status !== 'ready') {
+        trace = [];
+        status = 'failed';
+        note = backend.status === 'loading'
+          ? `${backend.backend.label} is still loading. Wait until it is ready before running the agent.`
+          : `${backend.backend.label} is unavailable: ${backend.error}`;
+        emit();
+        return;
+      }
       trace = [];
       note = null;
       status = 'running';
@@ -353,10 +512,27 @@ export function createSession(
       emit();
     },
 
+    undo: () => {
+      // Refused rather than queued: reversing the plan mid-run would invalidate
+      // the decision the agent is currently acting on.
+      if (status === 'running' || status === 'awaiting_approval') return;
+      const target = undoTarget;
+      if (target === null) return;
+      undoing = true;
+      try {
+        store.editAsHuman(() => target.items);
+      } finally {
+        undoing = false;
+      }
+    },
+
     reset: () => {
       if (status === 'running' || status === 'awaiting_approval') return;
       trace = [];
       note = null;
+      undoTarget = null;
+      highlight = null;
+      highlightToken = 0;
       status = 'idle';
       emit();
     },

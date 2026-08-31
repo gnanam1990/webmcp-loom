@@ -11,6 +11,7 @@ The deterministic Japan travel domain, collaborative application, shared state, 
 - ten tool definitions with schemas, read/write annotations and deterministic executors;
 - a responsive itinerary, budget, trace and visible-approval interface;
 - one application factory that hands the same store and tool array to the in-app runtime and document WebMCP registration;
+- undo, a visible execution-backend indicator, and application-native highlights;
 - deterministic domain, collaboration, accessibility-helper and WebMCP integration tests.
 
 ## Shared state and revisions

@@ -17,14 +17,29 @@ const REPAIR_GOAL = 'Rework everything around that and keep the same budget.';
 
 const BUSY: readonly SessionSnapshot['status'][] = ['running', 'awaiting_approval'];
 
-export function App({ session }: { session: Session }): React.JSX.Element {
+/**
+ * Whether the page could hand this tool surface to an external WebMCP agent.
+ * `unsupported` is not a failure: the in-app experience is unaffected, but the
+ * absence should be visible rather than silent.
+ */
+export type WebMcpStatus = 'registered' | 'unsupported' | 'failed';
+
+/** How long a change stays marked before the cue fades on its own. */
+const HIGHLIGHT_MILLISECONDS = 2_600;
+
+export function App({ session, webmcp = 'unsupported' }: {
+  session: Session;
+  webmcp?: WebMcpStatus;
+}): React.JSX.Element {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [goal, setGoal] = useState(HERO_GOAL);
+  const [litToken, setLitToken] = useState<number | null>(null);
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
   const approvalSeen = useRef(false);
 
   const busy = BUSY.includes(snapshot.status);
+  const backendReady = snapshot.backend.status === 'ready';
   const planned = snapshot.trip.items.length > 0;
 
   useEffect(() => {
@@ -35,10 +50,22 @@ export function App({ session }: { session: Session }): React.JSX.Element {
     }
   }, [busy, snapshot.pendingApproval]);
 
+  // A highlight is a "this just changed" cue, so it clears itself. Keying the
+  // timer on the token restarts decay even when the same item changes twice.
+  const highlightToken = snapshot.highlight?.token ?? null;
+  useEffect(() => {
+    if (highlightToken === null) return undefined;
+    setLitToken(highlightToken);
+    const timer = setTimeout(() => setLitToken(null), HIGHLIGHT_MILLISECONDS);
+    return () => clearTimeout(timer);
+  }, [highlightToken]);
+
+  const lit = litToken !== null && litToken === highlightToken ? snapshot.highlight : null;
+
   const submit = useCallback((event: React.FormEvent) => {
     event.preventDefault();
-    if (!busy && goal.trim()) void session.run(goal.trim());
-  }, [busy, goal, session]);
+    if (!busy && backendReady && goal.trim()) void session.run(goal.trim());
+  }, [backendReady, busy, goal, session]);
 
   return (
     <div className="shell">
@@ -66,7 +93,7 @@ export function App({ session }: { session: Session }): React.JSX.Element {
             ref={runButton}
             type="submit"
             className="button button--primary"
-            disabled={busy || !goal.trim()}
+            disabled={busy || !backendReady || !goal.trim()}
           >
             {busy && snapshot.progress !== null
               ? `Working · step ${snapshot.progress.currentStep} of ${snapshot.progress.maximumSteps}`
@@ -82,15 +109,22 @@ export function App({ session }: { session: Session }): React.JSX.Element {
               Use the rework goal
             </button>
           )}
+          <Undo undoable={snapshot.undoable} onUndo={session.undo} />
         </div>
+        <Backend state={snapshot.backend} webmcp={webmcp} />
       </form>
 
       <StatusNote snapshot={snapshot} />
 
       <div className="columns">
-        <Board trip={snapshot.trip} onMove={session.moveItem} onRemove={session.removeItem} />
+        <Board
+          trip={snapshot.trip}
+          onMove={session.moveItem}
+          onRemove={session.removeItem}
+          litItemIds={lit?.itemIds ?? []}
+        />
         <div className="side">
-          <Budget snapshot={snapshot} />
+          <Budget snapshot={snapshot} lit={lit?.budget === true} />
           <Trace lines={snapshot.trace} />
         </div>
       </div>
@@ -105,6 +139,69 @@ export function App({ session }: { session: Session }): React.JSX.Element {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Undo names what it will reverse, so the control is legible without the
+ * surrounding context. When a run makes it unavailable it says why rather than
+ * greying out silently — a disabled control with no reason reads as a bug.
+ */
+function Undo({ undoable, onUndo }: {
+  undoable: SessionSnapshot['undoable'];
+  onUndo: () => void;
+}): React.JSX.Element | null {
+  if (undoable === null) return null;
+  const blocked = undoable.blockedReason !== null;
+  return (
+    <>
+      <button
+        type="button"
+        className={`button${blocked ? ' button--blocked' : ''}`}
+        onClick={() => {
+          if (!blocked) onUndo();
+        }}
+        aria-disabled={blocked}
+        title={undoable.blockedReason ?? undefined}
+        aria-describedby={blocked ? 'undo-reason' : undefined}
+      >
+        Undo {undoable.label}
+      </button>
+      {blocked && <span id="undo-reason" className="sr-only">{undoable.blockedReason}</span>}
+    </>
+  );
+}
+
+/**
+ * Makes model-neutrality visible instead of merely claimed, and reports whether
+ * the same tool surface is reachable by an external agent.
+ *
+ * Deliberately never says "offline": local inference means the reasoning runs
+ * on the device, while the trip tools still talk to the application exactly as
+ * the normal interface does.
+ */
+function Backend({ state, webmcp }: {
+  state: SessionSnapshot['backend'];
+  webmcp: WebMcpStatus;
+}): React.JSX.Element {
+  const webmcpLabel = webmcp === 'registered'
+    ? 'Tools registered with WebMCP'
+    : webmcp === 'failed'
+      ? 'WebMCP registration failed'
+      : 'WebMCP unavailable in this browser';
+
+  return (
+    <p className="backend" aria-live="polite">
+      <span className={`backend__dot backend__dot--${state.status}`} aria-hidden="true" />
+      <span className="backend__label">{state.backend.label}</span>
+      <span className="backend__state">
+        {state.status === 'ready' ? 'ready'
+          : state.status === 'loading' ? 'loading…'
+            : `unavailable — ${state.error}`}
+      </span>
+      <span className="backend__sep" aria-hidden="true">·</span>
+      <span className={`backend__webmcp is-${webmcp}`}>{webmcpLabel}</span>
+    </p>
   );
 }
 
@@ -123,10 +220,11 @@ function StatusNote({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Elem
   );
 }
 
-function Board({ trip, onMove, onRemove }: {
+function Board({ trip, onMove, onRemove, litItemIds }: {
   trip: TripState;
   onMove: (itemId: string, toDate: string) => void;
   onRemove: (itemId: string) => void;
+  litItemIds: readonly string[];
 }): React.JSX.Element {
   const byDate = new Map<string, ItineraryItem[]>();
   for (const item of [...trip.items].sort((left, right) => left.date.localeCompare(right.date))) {
@@ -154,7 +252,10 @@ function Board({ trip, onMove, onRemove }: {
               <h3 className="day__date">{formatDay(date)}</h3>
               <ul className="day__items">
                 {items.map((item) => (
-                  <li key={item.id} className={`card card--${item.kind}`}>
+                  <li
+                    key={item.id}
+                    className={`card card--${item.kind}${litItemIds.includes(item.id) ? ' is-lit' : ''}`}
+                  >
                     <span className="card__kind">{item.kind}</span>
                     <span className="card__label">{item.label}</span>
                     <span className="card__price">{money(item.priceInr)}</span>
@@ -243,11 +344,11 @@ function shiftIsoDate(iso: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function Budget({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Element {
+function Budget({ snapshot, lit }: { snapshot: SessionSnapshot; lit: boolean }): React.JSX.Element {
   const { budget } = snapshot;
   const used = Math.min(100, Math.round((budget.committedInr / budget.budgetInr) * 100));
   return (
-    <section className="panel budget-panel" aria-labelledby="budget-heading">
+    <section className={`panel budget-panel${lit ? ' is-lit' : ''}`} aria-labelledby="budget-heading">
       <h2 id="budget-heading">Budget</h2>
       <p className="budget__figure">
         <span className={budget.overBudget ? 'is-over' : ''}>{money(budget.committedInr)}</span>

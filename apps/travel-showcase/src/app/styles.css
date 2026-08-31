@@ -126,8 +126,9 @@ h2 { font-size: 1.05rem; }
   min-height: 44px;
 }
 
-.button:hover:not(:disabled) { border-color: var(--accent); }
+.button:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--accent); }
 .button:disabled { opacity: 0.5; cursor: not-allowed; }
+.button--blocked { opacity: 0.5; cursor: not-allowed; }
 
 .button--primary {
   color: var(--accent-ink);
@@ -388,4 +389,57 @@ h2 { font-size: 1.05rem; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Backend indicator ------------------------------------------------------ */
+
+.backend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.backend__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Shape is carried by the label text; the dot only reinforces it. */
+.backend__dot--loading { background: var(--warn); }
+.backend__dot--failed { background: var(--over); }
+
+.backend__label { font-weight: 620; color: var(--ink); }
+.backend__state { color: var(--ink-faint); }
+.backend__sep { color: var(--ink-faint); }
+.backend__webmcp.is-registered { color: var(--accent); }
+.backend__webmcp.is-failed { color: var(--over); }
+
+/* Highlights ------------------------------------------------------------- */
+
+/*
+ * A highlight marks the entity that just changed and clears itself. It never
+ * carries information that is not also readable from the board and the trace,
+ * so a viewer who misses it loses nothing.
+ */
+.card.is-lit,
+.budget-panel.is-lit {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+/*
+ * Reduced motion removes the transition, not the cue: the highlight still
+ * appears and still clears, it simply does not animate in.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .card.is-lit,
+  .budget-panel.is-lit { transition: none; }
 }

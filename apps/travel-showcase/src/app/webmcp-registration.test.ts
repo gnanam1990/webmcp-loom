@@ -26,10 +26,9 @@ describe('travel WebMCP registration lifecycle', () => {
     const lifecycle = new EventTarget();
     const application = createTravelApplication();
 
-    const dispose = installTravelWebMcpRegistration(
-      application.tools,
-      lifecycle as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>,
-    );
+    const dispose = installTravelWebMcpRegistration(application.tools, {
+      lifecycle: lifecycle as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>,
+    });
     await Promise.resolve();
     expect(signals).toHaveLength(10);
 
