@@ -1,7 +1,17 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // Resolved from source rather than from `packages/runtime/dist`. The root
+    // `tsc -b` references that package's `noEmit` config, so declarations are
+    // never emitted during typecheck, and this directory is typechecked by a
+    // separate `tsc -p` invocation outside that project graph. Node resolution
+    // would look for a `dist` that only exists after a build has run.
+    "paths": {
+      "@webmcp-loom/runtime": [
+        "../packages/runtime/src/index.ts"
+      ]
+    }
   },
   "include": ["*.ts"]
 }
