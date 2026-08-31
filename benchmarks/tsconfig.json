@@ -3,8 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": [
-    "schema.ts",
-    "smoke-tasks.ts"
-  ]
+  "include": ["*.ts"]
 }

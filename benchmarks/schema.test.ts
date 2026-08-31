@@ -21,4 +21,13 @@ describe('benchmark foundation', () => {
       'state_change',
     ]));
   });
+
+  it('accepts cancellation as a first-class terminal runtime outcome', () => {
+    const cancelled = SMOKE_TASKS[0];
+    if (cancelled === undefined) throw new Error('Expected a smoke-task fixture.');
+    expect(() => assertValidBenchmarkTask({
+      ...cancelled,
+      expected: { ...cancelled.expected, allowedStatuses: ['cancelled'] },
+    })).not.toThrow();
+  });
 });

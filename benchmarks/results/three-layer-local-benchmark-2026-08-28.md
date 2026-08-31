@@ -1,5 +1,12 @@
 # Three-layer local benchmark — 2026-08-28
 
+> **Evidence status:** exploratory architecture probe, not a recorded
+> `BenchmarkResult` and not valid for model selection. The run did not retain
+> exact task ids/fixtures, per-run tool traces and assertions, latency,
+> schema-valid/identifier-reuse rates, hardware/OS, engine build, artifact
+> digests, or the exact G9v3 run window. Repeat it through the benchmark runner
+> before using these observations in a selection decision.
+
 ## Architecture under test
 
 1. A deterministic fixture retriever exposes only the applicable next tool.

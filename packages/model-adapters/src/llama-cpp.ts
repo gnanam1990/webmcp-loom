@@ -16,7 +16,11 @@ export interface LlamaCppRuntimeModelOptions {
 export function createLlamaCppRuntimeModel(
   options: LlamaCppRuntimeModelOptions,
 ): RuntimeModel {
-  const endpoint = `${options.baseUrl.replace(/\/$/, '')}/v1/chat/completions`;
+  const normalizedBaseUrl = options.baseUrl.replace(/\/+$/, '');
+  const versionedBaseUrl = normalizedBaseUrl.endsWith('/v1')
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/v1`;
+  const endpoint = `${versionedBaseUrl}/chat/completions`;
   return {
     async generate(request) {
       const response = await fetch(endpoint, {

@@ -3,10 +3,11 @@
 ## Why this probe exists
 
 Prompt-only tuning did not make the small models reliably multi-step. In a
-five-scenario built-runtime suite, both LFM2.5-1.2B and Qwen3.5-0.8B passed the
-live read and itinerary-item move cases, but failed other identifier-reuse or
-already-complete cases. That is enough evidence to avoid treating a short
-two-case pass as a model-selection result.
+five-scenario built-runtime suite, LFM2.5-1.2B passed the live read while
+Qwen3.5-0.8B prematurely finalized it. Both passed the itinerary-item move,
+but each failed other identifier-reuse or already-complete cases. That is
+enough evidence to avoid treating a short two-case pass as a model-selection
+result.
 
 ## Safety improvement: tool-specific decision schemas
 

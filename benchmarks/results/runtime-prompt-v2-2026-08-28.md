@@ -1,5 +1,11 @@
 # Runtime-prompt v2 local rerun — 2026-08-28
 
+> **Evidence status:** exploratory prompt probe, not selection-grade benchmark
+> evidence. Hardware, operating system, exact llama.cpp build, artifact
+> digests, peak memory, and runner-produced assertion records were not retained
+> for this rerun. The latency observations below must be repeated with those
+> fields before they can satisfy the measurement protocol.
+
 This rerun evaluates the revised prompt emitted by the built runtime, rather
 than a hand-written approximation. It is still a pre-integration benchmark: it
 uses a deterministic three-tool fixture with the travel surface's relevant
@@ -52,7 +58,7 @@ passes both strict decisions, including exact reuse of `fl-tokyo-day-02` and
 revision `1`. It does not generalize to the other tested models, so it is not
 evidence that the prompt is universally solved.
 
-Qwen3.5-0.8B is the provisional candidate for the next round. It is not a
-showcase selection: a real selection still needs the merged travel fixture,
+Qwen3.5-0.8B is a follow-up candidate for a reproducible runner round. It is
+not a showcase selection: a real selection still needs the merged travel fixture,
 the ten smoke tasks, thirty total deterministic tasks, repeated attempts,
 approval/state-recovery checks, and memory measurements.

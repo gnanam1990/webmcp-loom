@@ -18,6 +18,7 @@ export type BenchmarkCategory =
 
 export type ExpectedRunStatus =
   | 'approval_required'
+  | 'cancelled'
   | 'completed'
   | 'denied'
   | 'stale_state'
@@ -157,6 +158,9 @@ export function assertValidBenchmarkTask(task: BenchmarkTask): void {
   }
   if (task.expected.allowedStatuses.length === 0) {
     throw new Error(`Benchmark task ${task.id} needs an allowed runtime status.`);
+  }
+  if (new Set(task.expected.allowedStatuses).size !== task.expected.allowedStatuses.length) {
+    throw new Error(`Benchmark task ${task.id} repeats an allowed runtime status.`);
   }
   for (const reuse of task.expected.identifierReuses) {
     if (!reuse.sourceTool || !reuse.sourceOutputPath || !reuse.consumerTool || !reuse.consumerInputPath) {

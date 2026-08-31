@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@webmcp-loom/runtime": ["../runtime/src/index.ts"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "../runtime/src/**/*.ts"
+  ]
+}
