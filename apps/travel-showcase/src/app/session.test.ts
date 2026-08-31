@@ -147,12 +147,29 @@ describe('collaboration session', () => {
     session.subscribe(() => {
       const request = session.getSnapshot().pendingApproval;
       if (request !== null && seen === null) {
-        seen = request.tool.title;
+        seen = describeCall(request.tool.name, request.input);
         session.deny();
       }
     });
     await session.run('Prepare the trip.');
-    expect(seen).toBe('Stage an itinerary item');
+    expect(seen).toBe('Staging Sakura Airways BLR–NRT for ₹38,500');
+  });
+
+  it('does not announce running again after a decline', async () => {
+    const session = createSession();
+    const statuses: string[] = [];
+    session.subscribe(() => {
+      const snapshot = session.getSnapshot();
+      statuses.push(snapshot.status);
+      if (snapshot.status === 'awaiting_approval') session.deny();
+    });
+
+    await session.run('Prepare the trip.');
+
+    const approvalIndex = statuses.indexOf('awaiting_approval');
+    expect(approvalIndex).toBeGreaterThanOrEqual(0);
+    expect(statuses.slice(approvalIndex + 1)).not.toContain('running');
+    expect(session.getSnapshot().status).toBe('denied');
   });
 });
 
@@ -170,6 +187,21 @@ describe('human edits and stale state', () => {
     expect(after.trip.items).toHaveLength(before.trip.items.length - 1);
     expect(after.trip.revision).toBe(before.trip.revision + 1);
     expect(after.budget.committedInr).toBeLessThan(before.budget.committedInr);
+  });
+
+  it('applies a board move immediately and moves the revision forward', async () => {
+    const session = createSession();
+    await runApprovingAll(session, 'Prepare the trip.');
+    const before = session.getSnapshot();
+    const stay = before.trip.items.find((item) => item.kind === 'stay');
+    if (stay === undefined) throw new Error('Expected a staged stay.');
+
+    session.moveItem(stay.id, '2026-11-06');
+    const after = session.getSnapshot();
+
+    expect(after.trip.items.find((item) => item.id === stay.id)?.date).toBe('2026-11-06');
+    expect(after.trip.revision).toBe(before.trip.revision + 1);
+    expect(after.budget).toEqual(before.budget);
   });
 
   it('stops rather than overwriting when the person edits mid-run', async () => {

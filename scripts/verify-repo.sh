@@ -28,6 +28,14 @@ required_files=(
   packages/runtime/README.md
   packages/runtime/tsconfig.json
   packages/runtime/tsconfig.build.json
+  packages/model-adapters/package.json
+  packages/model-adapters/tsconfig.json
+  packages/model-adapters/tsconfig.build.json
+  packages/model-adapters/tsconfig.typecheck.json
+  benchmarks/README.md
+  benchmarks/schema.ts
+  benchmarks/smoke-tasks.ts
+  benchmarks/tsconfig.json
   examples/runtime-smoke/index.html
   examples/runtime-smoke/runtime-smoke.js
 )

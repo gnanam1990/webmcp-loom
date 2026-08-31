@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { money } from '../format.js';
 import { ACTIVITIES, FLIGHTS, STAYS } from '../inventory.js';
 import type { Session, SessionSnapshot, TraceLine } from './session.js';
 import type { ItineraryItem, TripState } from '../types.js';
-
-const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
-const money = (value: number): string => `₹${INR.format(value)}`;
 
 const DAY = new Intl.DateTimeFormat('en-GB', {
   weekday: 'short',
@@ -90,7 +88,7 @@ export function App({ session }: { session: Session }): React.JSX.Element {
       <StatusNote snapshot={snapshot} />
 
       <div className="columns">
-        <Board trip={snapshot.trip} onRemove={session.removeItem} busy={busy} />
+        <Board trip={snapshot.trip} onMove={session.moveItem} onRemove={session.removeItem} />
         <div className="side">
           <Budget snapshot={snapshot} />
           <Trace lines={snapshot.trace} />
@@ -125,10 +123,10 @@ function StatusNote({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Elem
   );
 }
 
-function Board({ trip, onRemove, busy }: {
+function Board({ trip, onMove, onRemove }: {
   trip: TripState;
+  onMove: (itemId: string, toDate: string) => void;
   onRemove: (itemId: string) => void;
-  busy: boolean;
 }): React.JSX.Element {
   const byDate = new Map<string, ItineraryItem[]>();
   for (const item of [...trip.items].sort((left, right) => left.date.localeCompare(right.date))) {
@@ -160,18 +158,23 @@ function Board({ trip, onRemove, busy }: {
                     <span className="card__kind">{item.kind}</span>
                     <span className="card__label">{item.label}</span>
                     <span className="card__price">{money(item.priceInr)}</span>
-                    <button
-                      type="button"
-                      className="card__remove"
-                      onClick={() => onRemove(item.id)}
-                      disabled={busy}
-                      title={busy ? 'Wait for the run to finish' : `Remove ${item.label}`}
-                      aria-label={busy
-                        ? `Remove ${item.label} unavailable while the agent is working`
-                        : `Remove ${item.label}`}
-                    >
-                      Remove
-                    </button>
+                    <div className="card__actions">
+                      <MoveControl
+                        item={item}
+                        startDate={trip.constraints.startDate}
+                        endDate={trip.constraints.endDate}
+                        onMove={onMove}
+                      />
+                      <button
+                        type="button"
+                        className="card__remove"
+                        onClick={() => onRemove(item.id)}
+                        title={`Remove ${item.label}`}
+                        aria-label={`Remove ${item.label}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -181,6 +184,63 @@ function Board({ trip, onRemove, busy }: {
       )}
     </section>
   );
+}
+
+function MoveControl({ item, startDate, endDate, onMove }: {
+  item: ItineraryItem;
+  startDate: string;
+  endDate: string;
+  onMove: (itemId: string, toDate: string) => void;
+}): React.JSX.Element {
+  const [toDate, setToDate] = useState(item.date);
+  useEffect(() => setToDate(item.date), [item.date]);
+
+  const fixed = item.kind === 'flight';
+  const lastStartDate = item.kind === 'stay'
+    ? shiftIsoDate(endDate, -item.nights)
+    : endDate;
+  const reason = fixed ? 'Flight dates follow the published timetable' : undefined;
+
+  return (
+    <span className="card__move">
+      <label className="sr-only" htmlFor={`move-${item.id}`}>Move {item.label} to date</label>
+      <select
+        id={`move-${item.id}`}
+        value={toDate}
+        onChange={(event) => setToDate(event.target.value)}
+        disabled={fixed}
+        title={reason}
+      >
+        {isoDates(startDate, lastStartDate).map((date) => (
+          <option key={date} value={date}>{formatDay(date)}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="card__move-button"
+        onClick={() => onMove(item.id, toDate)}
+        disabled={fixed || toDate === item.date}
+        title={reason ?? `Move ${item.label} to ${formatDay(toDate)}`}
+        aria-label={reason ?? `Move ${item.label} to ${formatDay(toDate)}`}
+      >
+        {fixed ? 'Fixed date' : 'Move'}
+      </button>
+    </span>
+  );
+}
+
+function isoDates(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  for (let cursor = startDate; cursor <= endDate; cursor = shiftIsoDate(cursor, 1)) {
+    dates.push(cursor);
+  }
+  return dates;
+}
+
+function shiftIsoDate(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function Budget({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Element {
@@ -193,7 +253,11 @@ function Budget({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Element 
         <span className={budget.overBudget ? 'is-over' : ''}>{money(budget.committedInr)}</span>
         <span className="budget__cap"> of {money(budget.budgetInr)}</span>
       </p>
-      <div className="meter" role="img" aria-label={`${used}% of budget committed`}>
+      <div
+        className="meter"
+        role="img"
+        aria-label={budgetMeterLabel(snapshot.budget)}
+      >
         <div
           className={`meter__fill ${budget.overBudget ? 'is-over' : ''}`}
           style={{ transform: `scaleX(${used / 100})` }}
@@ -220,6 +284,14 @@ function Budget({ snapshot }: { snapshot: SessionSnapshot }): React.JSX.Element 
       </p>
     </section>
   );
+}
+
+export function budgetMeterLabel(budget: SessionSnapshot['budget']): string {
+  if (budget.overBudget) {
+    return `${money(budget.committedInr)} committed; ${money(Math.abs(budget.remainingInr))} over budget`;
+  }
+  const used = Math.min(100, Math.round((budget.committedInr / budget.budgetInr) * 100));
+  return `${used}% of budget committed`;
 }
 
 function Trace({ lines }: { lines: readonly TraceLine[] }): React.JSX.Element {
