@@ -9,10 +9,11 @@
     "node": ">=22.13.0"
   },
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @webmcp-loom/runtime",
+    "build": "npm run build --workspaces --if-present",
     "lint": "eslint .",
     "smoke": "npm run build && npm run smoke:built",
     "smoke:built": "node scripts/runtime-smoke.mjs",
