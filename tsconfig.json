@@ -2,10 +2,10 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/travel-showcase"
+      "path": "./apps/travel-showcase/tsconfig.build.json"
     },
     {
-      "path": "./packages/runtime"
+      "path": "./packages/runtime/tsconfig.build.json"
     }
   ]
 }

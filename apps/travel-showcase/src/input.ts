@@ -1,4 +1,4 @@
-import type { JsonObject } from './runtime-contract.js';
+import type { JsonObject } from '@webmcp-loom/runtime';
 
 export function readString(input: JsonObject, key: string): string | undefined {
   const value = input[key];

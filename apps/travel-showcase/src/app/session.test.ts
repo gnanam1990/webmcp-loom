@@ -37,6 +37,35 @@ describe('collaboration session', () => {
     expect(snapshot.budget.overBudget).toBe(false);
   });
 
+  it('publishes an accepted in-app write together with its succeeded trace state', async () => {
+    const session = createSession();
+    const observed = [] as ReturnType<Session['getSnapshot']>[];
+    session.subscribe(() => {
+      const snapshot = session.getSnapshot();
+      observed.push(snapshot);
+      if (snapshot.status === 'awaiting_approval') session.approve();
+    });
+
+    await session.run('Prepare the trip.');
+
+    expect(observed.some((snapshot) => (
+      snapshot.trip.revision === 2
+      && snapshot.trace.some((line) => (
+        line.step === 3
+        && line.toolName === 'add_itinerary_item'
+        && line.state !== 'succeeded'
+      ))
+    ))).toBe(false);
+    expect(observed.some((snapshot) => (
+      snapshot.trip.revision === 2
+      && snapshot.trace.some((line) => (
+        line.step === 3
+        && line.toolName === 'add_itinerary_item'
+        && line.state === 'succeeded'
+      ))
+    ))).toBe(true);
+  });
+
   it('reuses an identifier returned by an earlier call in a later write', async () => {
     const session = createSession();
     await runApprovingAll(session, 'Prepare the trip.');
@@ -178,9 +207,11 @@ describe('human edits and stale state', () => {
   it('stops rather than overwriting when the person edits mid-run', async () => {
     const store = createTripStore();
     const session = createSession(store);
+    let edited = false;
     // Edit the shared state at the moment the agent asks to write.
     session.subscribe(() => {
-      if (session.getSnapshot().status === 'awaiting_approval') {
+      if (session.getSnapshot().status === 'awaiting_approval' && !edited) {
+        edited = true;
         store.editAsHuman((items) => items);
         session.approve();
       }

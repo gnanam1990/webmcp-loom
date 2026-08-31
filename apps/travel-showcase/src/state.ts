@@ -44,13 +44,30 @@ export type AddItemRequest =
   | { kind: 'flight'; flightId: string; date: string }
   | { kind: 'stay'; stayId: string; date: string; nights: number };
 
+export type TripMutationSource = 'direct' | 'external_tool' | 'human' | 'in_app_runtime';
+
 export interface TripStore {
   getState(): TripState;
   getBudgetSummary(): BudgetSummary;
+  /** Notify application consumers after an accepted human or agent write commits. */
+  subscribe(listener: (source: TripMutationSource) => void): () => void;
   /** Agent write. `expectedRevision` must match current state exactly. */
-  addItem(expectedRevision: number, request: AddItemRequest): ItineraryItem;
-  removeItem(expectedRevision: number, itemId: string): ItineraryItem;
-  moveItem(expectedRevision: number, itemId: string, toDate: string): ItineraryItem;
+  addItem(
+    expectedRevision: number,
+    request: AddItemRequest,
+    source?: TripMutationSource,
+  ): ItineraryItem;
+  removeItem(
+    expectedRevision: number,
+    itemId: string,
+    source?: TripMutationSource,
+  ): ItineraryItem;
+  moveItem(
+    expectedRevision: number,
+    itemId: string,
+    toDate: string,
+    source?: TripMutationSource,
+  ): ItineraryItem;
   /** Human edit from the UI. No revision check; domain invariants still apply. */
   editAsHuman(change: (items: readonly ItineraryItem[]) => readonly ItineraryItem[]): TripState;
 }
@@ -127,6 +144,7 @@ export function createTripStore(
   });
   let revision = 1;
   let items: readonly ItineraryItem[] = Object.freeze([]);
+  const listeners = new Set<(source: TripMutationSource) => void>();
 
   /**
    * Derived from the highest generated identifier rather than the item count,
@@ -379,10 +397,17 @@ export function createTripStore(
     });
   };
 
-  const commit = (next: readonly ItineraryItem[]): void => {
+  const commit = (next: readonly ItineraryItem[], source: TripMutationSource): void => {
     items = freezeItems(next);
     nextItemNumber = Math.max(nextItemNumber, highestGeneratedNumber(items) + 1);
     revision += 1;
+    for (const listener of [...listeners]) {
+      try {
+        listener(source);
+      } catch {
+        // Observers cannot roll back a committed write or make it appear failed.
+      }
+    }
   };
 
   items = freezeItems(initialItems);
@@ -390,6 +415,11 @@ export function createTripStore(
 
   return {
     getState: snapshot,
+
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
 
     getBudgetSummary: () => {
       const byKind: Record<ItineraryItemKind, number> = { activity: 0, flight: 0, stay: 0 };
@@ -407,21 +437,21 @@ export function createTripStore(
       });
     },
 
-    addItem: (expectedRevision, request) => {
+    addItem: (expectedRevision, request, source = 'direct') => {
       requireFresh(expectedRevision);
       const item = buildItem(request);
-      commit([...items, item]);
+      commit([...items, item], source);
       return item;
     },
 
-    removeItem: (expectedRevision, itemId) => {
+    removeItem: (expectedRevision, itemId, source = 'direct') => {
       requireFresh(expectedRevision);
       const item = findItem(itemId);
-      commit(items.filter((entry) => entry.id !== itemId));
+      commit(items.filter((entry) => entry.id !== itemId), source);
       return item;
     },
 
-    moveItem: (expectedRevision, itemId, toDate) => {
+    moveItem: (expectedRevision, itemId, toDate, source = 'direct') => {
       requireFresh(expectedRevision);
       const item = findItem(itemId);
       requireTripDate(toDate);
@@ -433,7 +463,7 @@ export function createTripStore(
       }
       if (item.kind === 'stay') requireStaySpan(toDate, item.nights);
       const moved = deepFreezeItem({ ...item, date: toDate });
-      commit(items.map((entry) => (entry.id === itemId ? moved : entry)));
+      commit(items.map((entry) => (entry.id === itemId ? moved : entry)), source);
       return moved;
     },
 
@@ -442,7 +472,7 @@ export function createTripStore(
       if (!Array.isArray(next)) {
         throw new TravelDomainError('invalid_request', 'A human edit must return an itinerary array.');
       }
-      commit(next);
+      commit(next, 'human');
       return snapshot();
     },
   };

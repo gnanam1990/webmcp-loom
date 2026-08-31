@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@webmcp-loom/runtime": [
+        "../../packages/runtime/src/index.ts"
+      ]
+    }
+  }
+}

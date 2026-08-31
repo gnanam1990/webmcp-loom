@@ -19,7 +19,7 @@
     "smoke:built": "node scripts/runtime-smoke.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --pretty false && npm run typecheck --workspace @webmcp-loom/model-adapters && tsc -p benchmarks --pretty false",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p benchmarks --pretty false",
     "verify:repo": "bash scripts/verify-repo.sh",
     "verify": "npm run verify:repo && npm run lint && npm run typecheck && npm test && npm run build && npm run smoke:built && npm audit --audit-level=high"
   },

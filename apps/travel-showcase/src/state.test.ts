@@ -10,6 +10,41 @@ function storeWithFlight(): { store: ReturnType<typeof createTripStore>; item: I
 }
 
 describe('trip store revision contract', () => {
+  it('notifies subscribers only after accepted state commits', () => {
+    const store = createTripStore();
+    let notifications = 0;
+    const unsubscribe = store.subscribe(() => { notifications += 1; });
+
+    store.addItem(1, {
+      kind: 'activity',
+      activityId: 'ac-tok-teamlab',
+      date: '2026-11-06',
+    });
+    expect(notifications).toBe(1);
+
+    expect(() => store.removeItem(1, 'it-1')).toThrow(TravelDomainError);
+    expect(notifications).toBe(1);
+
+    unsubscribe();
+    store.removeItem(2, 'it-1');
+    expect(notifications).toBe(1);
+  });
+
+  it('does not turn a committed write into an apparent failure when an observer throws', () => {
+    const store = createTripStore();
+    let laterObserverCalls = 0;
+    store.subscribe(() => { throw new Error('observer failed'); });
+    store.subscribe(() => { laterObserverCalls += 1; });
+
+    expect(() => store.addItem(1, {
+      kind: 'activity',
+      activityId: 'ac-tok-teamlab',
+      date: '2026-11-06',
+    })).not.toThrow();
+    expect(store.getState()).toMatchObject({ revision: 2, items: [{ id: 'it-1' }] });
+    expect(laterObserverCalls).toBe(1);
+  });
+
   it('starts at revision 1 with an empty itinerary', () => {
     const state = createTripStore().getState();
     expect(state.revision).toBe(1);
