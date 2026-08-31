@@ -244,7 +244,14 @@ h2 { font-size: 1.05rem; }
 .card__label { font-weight: 560; min-width: 0; }
 .card__price { font-variant-numeric: tabular-nums; font-weight: 620; }
 
-.card__actions, .card__move { display: flex; align-items: center; gap: 8px; }
+.card__actions {
+  grid-column: 2 / -1;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card__move { display: flex; align-items: center; gap: 8px; }
 .card__move select {
   min-height: 44px;
   max-width: 132px;
