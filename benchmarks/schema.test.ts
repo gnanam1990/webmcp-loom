@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import { BENCHMARK_FAILURE_DEFAULTS, assertValidBenchmarkTask } from './schema.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
+import { TRAVEL_TASKS } from './travel-tasks.js';
 
 describe('benchmark foundation', () => {
   it('ships exactly ten internally valid Day 1 smoke tasks', () => {
     expect(SMOKE_TASKS).toHaveLength(10);
     expect(new Set(SMOKE_TASKS.map(({ id }) => id)).size).toBe(SMOKE_TASKS.length);
     for (const task of SMOKE_TASKS) assertValidBenchmarkTask(task);
+  });
+
+  it('validates every task in the combined benchmark corpus with unique ids', () => {
+    const corpus = [...SMOKE_TASKS, ...TRAVEL_TASKS];
+    expect(new Set(corpus.map(({ id }) => id)).size).toBe(corpus.length);
+    for (const task of corpus) assertValidBenchmarkTask(task);
   });
 
   it('covers the mandatory deterministic Day 1 behaviours', () => {

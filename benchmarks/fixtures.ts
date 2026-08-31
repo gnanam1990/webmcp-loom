@@ -41,7 +41,9 @@ function emptyTrip(): TripStore {
 function seededTokyoAndKyoto(): TripStore {
   const store = createTripStore();
   store.addItem(1, { kind: 'flight', flightId: 'fl-blr-nrt-day', date: '2026-11-05' });
-  store.addItem(2, { kind: 'stay', stayId: 'st-tok-capsule', date: '2026-11-05', nights: 5 });
+  // Keep a genuinely replaceable Tokyo stay: the swap task must be able to
+  // select a cheaper option from the same real inventory.
+  store.addItem(2, { kind: 'stay', stayId: 'st-tok-mid', date: '2026-11-05', nights: 5 });
   store.addItem(3, { kind: 'stay', stayId: 'st-kyo-budget', date: '2026-11-10', nights: 4 });
   store.addItem(4, { kind: 'activity', activityId: 'ac-kyo-fushimi', date: '2026-11-11' });
   return store;

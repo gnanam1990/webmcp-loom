@@ -21,11 +21,19 @@ import type { JsonObject } from '@webmcp-loom/runtime';
 /** Substituted with the store's live revision immediately before the call. */
 export const REVISION_PLACEHOLDER = '$revision';
 
-/** Substituted with the id of the first staged itinerary item matching a kind. */
+/** Substituted from the preceding real tool result, never from static inventory. */
 export const ITEM_ID_PLACEHOLDER = {
   activity: '$firstActivityItemId',
   flight: '$firstFlightItemId',
   stay: '$firstStayItemId',
+} as const;
+
+/** Substituted from the preceding matching search result. */
+export const SEARCH_RESULT_ID_PLACEHOLDER = {
+  activity: '$firstActivitySearchId',
+  flight: '$firstFlightSearchId',
+  lastFlight: '$lastFlightSearchId',
+  stay: '$firstStaySearchId',
 } as const;
 
 export interface OracleCall {
@@ -56,7 +64,12 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
     { tool: 'search_flights', input: { originCode: 'BLR', excludeRedEye: true } },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' },
+      input: {
+        expectedRevision: revision,
+        kind: 'flight',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.flight,
+        date: '2026-11-05',
+      },
     },
   ],
 
@@ -67,18 +80,23 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
       input: {
         expectedRevision: revision,
         kind: 'stay',
-        refId: 'st-kyo-mid',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.stay,
         date: '2026-11-10',
-        nights: 4,
+        nights: 3,
       },
     },
   ],
 
   'smoke-select-kyoto-activity': [
-    { tool: 'search_activities', input: { cityId: 'kyoto' } },
+    { tool: 'search_activities', input: { cityId: 'kyoto', tag: 'culture' } },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-bamboo', date: '2026-11-11' },
+      input: {
+        expectedRevision: revision,
+        kind: 'activity',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.activity,
+        date: '2026-11-11',
+      },
     },
   ],
 
@@ -112,7 +130,7 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
       input: {
         expectedRevision: revision,
         kind: 'stay',
-        refId: 'st-kyo-budget',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.stay,
         date: '2026-11-10',
         nights: 3,
       },
@@ -127,9 +145,15 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
 
   'smoke-recover-after-human-edit': [
     { tool: 'get_itinerary', input: {} },
+    { tool: 'search_activities', input: { cityId: 'kyoto', tag: 'food' } },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-nishiki', date: '2026-11-12' },
+      input: {
+        expectedRevision: revision,
+        kind: 'activity',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.activity,
+        date: '2026-11-12',
+      },
     },
   ],
   // --- travel suite -------------------------------------------------------
@@ -149,20 +173,52 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
   'travel-build-two-city-plan': [
     { tool: 'get_trip_constraints', input: {} },
     {
-      tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' },
+      tool: 'search_flights',
+      input: { originCode: 'BLR', departureDate: '2026-11-05', excludeRedEye: true },
     },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'stay', refId: 'st-tok-capsule', date: '2026-11-05', nights: 5 },
+      input: {
+        expectedRevision: revision,
+        kind: 'flight',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.flight,
+        date: '2026-11-05',
+      },
+    },
+    { tool: 'search_stays', input: { cityId: 'tokyo', maxPricePerNightInr: 3_500 } },
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'stay',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.stay,
+        date: '2026-11-05',
+        nights: 5,
+      },
+    },
+    { tool: 'search_stays', input: { cityId: 'kyoto', maxPricePerNightInr: 3_000 } },
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'stay',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.stay,
+        date: '2026-11-10',
+        nights: 4,
+      },
+    },
+    {
+      tool: 'search_flights',
+      input: { destinationCode: 'BLR', departureDate: '2026-11-14', excludeRedEye: true },
     },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'stay', refId: 'st-kyo-budget', date: '2026-11-10', nights: 4 },
-    },
-    {
-      tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-nrt-blr-day', date: '2026-11-14' },
+      input: {
+        expectedRevision: revision,
+        kind: 'flight',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.flight,
+        date: '2026-11-14',
+      },
     },
   ],
 
@@ -181,7 +237,7 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
       input: {
         expectedRevision: revision,
         kind: 'stay',
-        refId: 'st-tok-capsule',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.stay,
         date: '2026-11-05',
         nights: 5,
       },
@@ -190,10 +246,15 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
 
   'travel-spend-remaining-budget': [
     { tool: 'get_budget_summary', input: {} },
-    { tool: 'search_activities', input: { cityId: 'kyoto' } },
+    { tool: 'search_activities', input: { cityId: 'kyoto', tag: 'food' } },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-bamboo', date: '2026-11-12' },
+      input: {
+        expectedRevision: revision,
+        kind: 'activity',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.activity,
+        date: '2026-11-12',
+      },
     },
   ],
 
@@ -201,19 +262,35 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
     { tool: 'search_flights', input: { excludeRedEye: true } },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-blr-nrt-day', date: '2026-11-05' },
+      input: {
+        expectedRevision: revision,
+        kind: 'flight',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.flight,
+        date: '2026-11-05',
+      },
     },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'flight', refId: 'fl-nrt-blr-day', date: '2026-11-14' },
+      input: {
+        expectedRevision: revision,
+        kind: 'flight',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.lastFlight,
+        date: '2026-11-14',
+      },
     },
   ],
 
   'travel-repair-within-remaining-budget': [
     { tool: 'get_budget_summary', input: {} },
+    { tool: 'search_activities', input: { cityId: 'kyoto', tag: 'food' } },
     {
       tool: 'add_itinerary_item',
-      input: { expectedRevision: revision, kind: 'activity', refId: 'ac-kyo-nishiki', date: '2026-11-13' },
+      input: {
+        expectedRevision: revision,
+        kind: 'activity',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.activity,
+        date: '2026-11-13',
+      },
     },
   ],
 
