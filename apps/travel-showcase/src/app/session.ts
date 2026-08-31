@@ -224,15 +224,24 @@ function scriptFor(trip: TripState): readonly typeof HERO_SCRIPT[number][] {
 function describeChange(
   added: readonly ItineraryItem[],
   removed: readonly ItineraryItem[],
-  moved: readonly ItineraryItem[],
+  changed: readonly ItineraryItem[],
+  moved: boolean,
 ): string {
-  const first = added[0] ?? moved[0] ?? removed[0];
+  const first = added[0] ?? changed[0] ?? removed[0];
   const label = first?.label ?? 'the plan';
-  const total = added.length + removed.length + moved.length;
+  const total = added.length + removed.length + changed.length;
   const extra = total > 1 ? ` and ${total - 1} other change${total > 2 ? 's' : ''}` : '';
   if (added.length > 0) return `staging ${label}${extra}`;
-  if (moved.length > 0) return `moving ${label}${extra}`;
+  if (changed.length > 0) return `${moved ? 'moving' : 'updating'} ${label}${extra}`;
   return `removing ${label}${extra}`;
+}
+
+/** Itinerary items are flat, validated records, so field equality is sufficient. */
+function sameItem(left: ItineraryItem, right: ItineraryItem): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every(([key, value]) => Object.is(value, right[key as keyof ItineraryItem]));
 }
 
 export function createSession(
@@ -250,6 +259,7 @@ export function createSession(
   let currentStep = 0;
 
   let previousItems: readonly ItineraryItem[] = store.getState().items;
+  let previousBudget = store.getBudgetSummary();
   let undoTarget: { label: string; items: readonly ItineraryItem[] } | null = null;
   let highlight: HighlightCue | null = null;
   let highlightToken = 0;
@@ -278,29 +288,40 @@ export function createSession(
     );
     const before = byId(previousItems);
     const after = byId(current);
+    const previousIndex = new Map(previousItems.map((item, index) => [item.id, index]));
+    const currentBudget = store.getBudgetSummary();
 
     const added = current.filter((item) => !before.has(item.id));
     const removed = previousItems.filter((item) => !after.has(item.id));
-    const moved = current.filter((item) => {
+    // Removing or adding an item naturally shifts later indexes; that is not a
+    // reorder of those surviving items. Only compare ordering when membership
+    // stayed constant across the commit.
+    const membershipChanged = added.length > 0 || removed.length > 0;
+    const changed = current.filter((item, index) => {
       const original = before.get(item.id);
-      return original !== undefined && original.date !== item.date;
+      return original !== undefined && (
+        !sameItem(original, item) || (!membershipChanged && previousIndex.get(item.id) !== index)
+      );
     });
+    const moved = changed.some((item) => before.get(item.id)?.date !== item.date);
+    const crossedBudgetCap = previousBudget.overBudget !== currentBudget.overBudget;
 
-    if (added.length > 0 || removed.length > 0 || moved.length > 0) {
+    if (added.length > 0 || removed.length > 0 || changed.length > 0) {
       // An undo is not itself undoable: depth is one step and redo is out of scope.
       undoTarget = undoing
         ? null
-        : { label: describeChange(added, removed, moved), items: previousItems };
+        : { label: describeChange(added, removed, changed, moved), items: previousItems };
       highlightToken += 1;
       highlight = {
-        itemIds: [...added, ...moved].map((item) => item.id),
+        itemIds: [...added, ...changed].map((item) => item.id),
         // A removal has no surviving card to mark, so the budget carries the cue.
-        budget: removed.length > 0 || store.getBudgetSummary().overBudget,
+        budget: removed.length > 0 || crossedBudgetCap,
         token: highlightToken,
       };
     }
 
     previousItems = current;
+    previousBudget = currentBudget;
 
     // The cue and the undo record are computed for every source above, but the
     // notification is not. The runtime's terminal tool event publishes an in-app
@@ -392,6 +413,15 @@ export function createSession(
 
     run: async (goal: string): Promise<void> => {
       if (status === 'running' || status === 'awaiting_approval') return;
+      if (backend.status !== 'ready') {
+        trace = [];
+        status = 'failed';
+        note = backend.status === 'loading'
+          ? `${backend.backend.label} is still loading. Wait until it is ready before running the agent.`
+          : `${backend.backend.label} is unavailable: ${backend.error}`;
+        emit();
+        return;
+      }
       trace = [];
       note = null;
       status = 'running';
@@ -500,6 +530,9 @@ export function createSession(
       if (status === 'running' || status === 'awaiting_approval') return;
       trace = [];
       note = null;
+      undoTarget = null;
+      highlight = null;
+      highlightToken = 0;
       status = 'idle';
       emit();
     },

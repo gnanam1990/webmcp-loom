@@ -274,6 +274,20 @@ describe('human edits and stale state', () => {
     expect(session.getSnapshot().status).toBe('denied');
   });
 
+  it('clears undo and highlight state when a completed session resets', async () => {
+    const session = createSession();
+    await runApprovingAll(session, 'Prepare the trip.');
+    expect(session.getSnapshot().undoable).not.toBeNull();
+    expect(session.getSnapshot().highlight).not.toBeNull();
+
+    session.reset();
+
+    const snapshot = session.getSnapshot();
+    expect(snapshot.status).toBe('idle');
+    expect(snapshot.undoable).toBeNull();
+    expect(snapshot.highlight).toBeNull();
+  });
+
   it('terminalizes the pending trace line when a run is cancelled', async () => {
     const session = createSession();
     let stopped = false;
@@ -396,6 +410,20 @@ describe('undo', () => {
     expect(session.getSnapshot().undoable).toBeNull();
   });
 
+  it('records a reordered itinerary as a reversible changed state', async () => {
+    const store = createTripStore();
+    const session = createSession(store);
+    await runApprovingAll(session, 'Prepare the trip.');
+    const originalOrder = session.getSnapshot().trip.items.map((item) => item.id);
+
+    store.editAsHuman((items) => [...items].reverse());
+
+    expect(session.getSnapshot().undoable?.label).toMatch(/^updating /);
+    expect(session.getSnapshot().highlight?.itemIds).toEqual([...originalOrder].reverse());
+    session.undo();
+    expect(session.getSnapshot().trip.items.map((item) => item.id)).toEqual(originalOrder);
+  });
+
   it('is blocked with a stated reason while a run is in flight', async () => {
     const session = createSession();
     await runApprovingAll(session, 'Prepare the trip.');
@@ -458,7 +486,7 @@ describe('highlight cue', () => {
     expect(session.getSnapshot().highlight?.token).toBeGreaterThan(first);
   });
 
-  it('falls back to the budget when the change removed the only card to mark', async () => {
+  it('routes any removal highlight to the budget because no removed card remains to mark', async () => {
     const session = createSession();
     await runApprovingAll(session, 'Prepare the trip.');
     const target = session.getSnapshot().trip.items[0];
@@ -469,6 +497,25 @@ describe('highlight cue', () => {
 
     expect(highlight?.itemIds).toEqual([]);
     expect(highlight?.budget).toBe(true);
+  });
+
+  it('does not flash the budget for a move that keeps an already-over-budget plan over budget', () => {
+    const store = createTripStore();
+    store.addItem(1, { kind: 'flight', flightId: 'fl-blr-nrt-day', date: '2026-11-05' });
+    store.addItem(2, { kind: 'stay', stayId: 'st-tok-high', date: '2026-11-05', nights: 5 });
+    store.addItem(3, { kind: 'stay', stayId: 'st-kyo-ryokan', date: '2026-11-10', nights: 4 });
+    store.addItem(4, { kind: 'flight', flightId: 'fl-nrt-blr-day', date: '2026-11-14' });
+    const session = createSession(store);
+    const stay = session.getSnapshot().trip.items.find((item) => item.kind === 'stay');
+    if (stay === undefined) throw new Error('Expected a staged stay.');
+
+    expect(session.getSnapshot().budget.overBudget).toBe(true);
+    session.moveItem(stay.id, '2026-11-06');
+
+    const highlight = session.getSnapshot().highlight;
+    expect(session.getSnapshot().budget.overBudget).toBe(true);
+    expect(highlight?.itemIds).toEqual([stay.id]);
+    expect(highlight?.budget).toBe(false);
   });
 });
 
@@ -492,6 +539,27 @@ describe('backend indicator state', () => {
       backend: { id: 'local-qwen', kind: 'local', label: 'Local · Qwen 1.5B', detail: 'Loading model weights.' },
     });
     expect(session.getSnapshot().backend).toMatchObject({ status: 'loading' });
+  });
+
+  it('does not begin a scripted run while its selected backend is loading or failed', async () => {
+    const descriptor = { id: 'local-qwen', kind: 'local' as const, label: 'Local · Qwen 1.5B', detail: 'Loading model weights.' };
+    const loading = createSession(createTripStore(), undefined, { status: 'loading', backend: descriptor });
+    await loading.run('Prepare the trip.');
+    expect(loading.getSnapshot()).toMatchObject({
+      status: 'failed',
+      trace: [],
+      note: 'Local · Qwen 1.5B is still loading. Wait until it is ready before running the agent.',
+    });
+
+    const failed = createSession(createTripStore(), undefined, {
+      status: 'failed', backend: descriptor, error: 'WebGPU is unavailable.',
+    });
+    await failed.run('Prepare the trip.');
+    expect(failed.getSnapshot()).toMatchObject({
+      status: 'failed',
+      trace: [],
+      note: 'Local · Qwen 1.5B is unavailable: WebGPU is unavailable.',
+    });
   });
 
   it('carries a failed backend and its reason through to the snapshot', () => {

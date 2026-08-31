@@ -39,6 +39,7 @@ export function App({ session, webmcp = 'unsupported' }: {
   const approvalSeen = useRef(false);
 
   const busy = BUSY.includes(snapshot.status);
+  const backendReady = snapshot.backend.status === 'ready';
   const planned = snapshot.trip.items.length > 0;
 
   useEffect(() => {
@@ -63,8 +64,8 @@ export function App({ session, webmcp = 'unsupported' }: {
 
   const submit = useCallback((event: React.FormEvent) => {
     event.preventDefault();
-    if (!busy && goal.trim()) void session.run(goal.trim());
-  }, [busy, goal, session]);
+    if (!busy && backendReady && goal.trim()) void session.run(goal.trim());
+  }, [backendReady, busy, goal, session]);
 
   return (
     <div className="shell">
@@ -92,7 +93,7 @@ export function App({ session, webmcp = 'unsupported' }: {
             ref={runButton}
             type="submit"
             className="button button--primary"
-            disabled={busy || !goal.trim()}
+            disabled={busy || !backendReady || !goal.trim()}
           >
             {busy && snapshot.progress !== null
               ? `Working · step ${snapshot.progress.currentStep} of ${snapshot.progress.maximumSteps}`
@@ -153,17 +154,21 @@ function Undo({ undoable, onUndo }: {
   if (undoable === null) return null;
   const blocked = undoable.blockedReason !== null;
   return (
-    <button
-      type="button"
-      className="button"
-      onClick={onUndo}
-      disabled={blocked}
-      title={undoable.blockedReason ?? undefined}
-      aria-describedby={blocked ? 'undo-reason' : undefined}
-    >
-      Undo {undoable.label}
-      {blocked && <span id="undo-reason" className="visually-hidden">{undoable.blockedReason}</span>}
-    </button>
+    <>
+      <button
+        type="button"
+        className={`button${blocked ? ' button--blocked' : ''}`}
+        onClick={() => {
+          if (!blocked) onUndo();
+        }}
+        aria-disabled={blocked}
+        title={undoable.blockedReason ?? undefined}
+        aria-describedby={blocked ? 'undo-reason' : undefined}
+      >
+        Undo {undoable.label}
+      </button>
+      {blocked && <span id="undo-reason" className="sr-only">{undoable.blockedReason}</span>}
+    </>
   );
 }
 
