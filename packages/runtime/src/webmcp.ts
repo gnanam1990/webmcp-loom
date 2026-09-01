@@ -154,6 +154,74 @@ export async function installDocumentRuntimeTools(
   return registerRuntimeTools(candidate, tools, options);
 }
 
+/**
+ * Installs document tools for the lifetime of the current page.
+ *
+ * A terminal `pagehide` cancels an in-flight registration and disposes a
+ * completed one. BFCache page hides are intentionally preserved, so restored
+ * pages keep their existing registration.
+ */
+export async function installDocumentRuntimeToolsWithPageLifecycle(
+  tools: readonly RuntimeTool[],
+  options: RegisterRuntimeToolsOptions = {},
+): Promise<WebMcpRegistration | null> {
+  if (typeof document === 'undefined' || document.defaultView === null) {
+    return installDocumentRuntimeTools(tools, options);
+  }
+
+  const page = document.defaultView;
+  const lifecycle = new AbortController();
+  let registration: WebMcpRegistration | null = null;
+  let cleanedUp = false;
+
+  const cleanup = (): void => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    page.removeEventListener('pagehide', onPageHide);
+    options.signal?.removeEventListener('abort', abortLifecycle);
+  };
+  const dispose = (): void => {
+    lifecycle.abort();
+    registration?.dispose();
+    cleanup();
+  };
+  const abortLifecycle = (): void => dispose();
+  const onPageHide = (event: PageTransitionEvent): void => {
+    if (!event.persisted) dispose();
+  };
+
+  page.addEventListener('pagehide', onPageHide);
+  if (options.signal?.aborted) {
+    dispose();
+  } else {
+    options.signal?.addEventListener('abort', abortLifecycle, { once: true });
+  }
+
+  try {
+    registration = await installDocumentRuntimeTools(tools, {
+      ...options,
+      signal: lifecycle.signal,
+    });
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+
+  if (registration === null) {
+    cleanup();
+    return null;
+  }
+  if (lifecycle.signal.aborted) {
+    registration.dispose();
+    cleanup();
+    throw new AgentRuntimeError('cancelled', 'WebMCP page lifecycle ended during registration.');
+  }
+  return {
+    signal: registration.signal,
+    dispose,
+  };
+}
+
 function toWebMcpDefinition(tool: RuntimeTool): WebMcpToolDefinition {
   return {
     name: tool.name,
