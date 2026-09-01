@@ -32,8 +32,12 @@ It does not redefine runtime safety or tool executors.
 `runner.ts` is the deterministic single-task runner. It executes a supplied
 `RuntimeModel` through the public runtime contract and the real travel tools,
 then records tool traces, observable assertions, runtime outcome and metrics.
-It deliberately does not add a second execution or approval policy. A local
-adapter, retrieval baseline and batch report command remain subsequent work.
+It deliberately does not add a second execution or approval policy.
+
+`batch.ts` runs each supplied task a fixed number of times with an explicitly
+configured model factory. It retains every attempt and calculates decision-
+weighted schema validity, complete-task pass rate and mean latency; it never
+downloads a model, selects a candidate or discards failed attempts.
 
 ## Result reporting
 
