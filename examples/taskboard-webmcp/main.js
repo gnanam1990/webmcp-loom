@@ -103,7 +103,7 @@ try {
   }
 }
 
-if (installed === null && !registrationFailed && !terminalPagehide && !lifecycle.signal.aborted) {
+if (installed === null && !registrationFailed && !terminalPagehide) {
   status.textContent = 'WebMCP unavailable in this browser';
   status.dataset.state = 'unsupported';
   disableWebMcpActions();
