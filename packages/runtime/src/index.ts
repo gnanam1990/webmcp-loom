@@ -30,6 +30,8 @@ export type {
   RuntimeToolDescriptor,
   RuntimeToolExecuteContext,
   RuntimeToolProvider,
+  RuntimeToolSelector,
+  RuntimeToolSelectorContext,
   ToolRefreshPhase,
 } from './types.js';
 export type {

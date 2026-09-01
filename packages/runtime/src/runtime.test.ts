@@ -76,6 +76,29 @@ describe('runAgentRuntime', () => {
     expect(result.events.filter(({ type }) => type === 'tools_refreshed')).toHaveLength(3);
   });
 
+  it('narrows the model prompt and response schema through a page-owned tool selector', async () => {
+    const inspect = tool();
+    const search = tool({ name: 'search', title: 'Search', description: 'Search fixtures.' });
+    const runtimeModel = model(call('search'), { type: 'final', message: 'done' });
+    const result = await runAgentRuntime({
+      goal: 'Search the fixture.',
+      model: runtimeModel,
+      toolProvider: createStaticToolProvider([inspect, search]),
+      toolSelector: ({ tools }) => {
+        expect(tools.map(({ name }) => name)).toEqual(['inspect', 'search']);
+        return ['search'];
+      },
+    });
+
+    expect(result.status).toBe('completed');
+    const request = vi.mocked(runtimeModel.generate).mock.calls[0]?.[0];
+    expect(request?.prompt).toContain('"search"');
+    expect(request?.prompt).not.toContain('"inspect"');
+    expect(request?.responseSchema).toMatchObject({ oneOf: expect.arrayContaining([
+      expect.objectContaining({ properties: expect.objectContaining({ tool: { const: 'search' } }) }),
+    ]) });
+  });
+
   it('fails closed when a tool disappears before execution', async () => {
     const provider: RuntimeToolProvider = {
       getTools: vi.fn()
