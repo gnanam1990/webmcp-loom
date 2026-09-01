@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { BENCHMARK_FAILURE_DEFAULTS, assertValidBenchmarkTask } from './schema.js';
+import {
+  BENCHMARK_FAILURE_DEFAULTS,
+  BENCHMARK_MAX_TOOL_CALLS,
+  assertValidBenchmarkTask,
+} from './schema.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
 import { TRAVEL_TASKS } from './travel-tasks.js';
 
@@ -45,7 +49,9 @@ describe('benchmark foundation', () => {
       .toEqual({ category: 'adapter', retryable: false });
     expect(BENCHMARK_FAILURE_DEFAULTS.load_failed)
       .toEqual({ category: 'adapter', retryable: true });
-    expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(29);
+    expect(BENCHMARK_FAILURE_DEFAULTS.approval_failed)
+      .toEqual({ category: 'approval', retryable: true });
+    expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(30);
   });
 
   it('rejects whitespace-only tool names and identifier-reuse fields', () => {
@@ -78,5 +84,19 @@ describe('benchmark foundation', () => {
         }],
       },
     })).toThrow('incomplete identifier-reuse assertion');
+  });
+
+  it('reserves one runtime decision for a final response', () => {
+    const task = SMOKE_TASKS[0];
+    if (task === undefined) throw new Error('Expected a smoke-task fixture.');
+
+    expect(BENCHMARK_MAX_TOOL_CALLS).toBe(19);
+    expect(() => assertValidBenchmarkTask({
+      ...task,
+      expected: {
+        ...task.expected,
+        toolCalls: { ...task.expected.toolCalls, max: BENCHMARK_MAX_TOOL_CALLS + 1 },
+      },
+    })).toThrow('invalid tool-call bounds');
   });
 });

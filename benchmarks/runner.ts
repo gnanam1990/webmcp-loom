@@ -13,6 +13,8 @@ import {
 } from './schema.js';
 import type {
   AgentApprovalRequest,
+  AgentEvent,
+  AgentToolResult,
   AgentRunResult,
   JsonObject,
   JsonValue,
@@ -48,6 +50,11 @@ interface ObservedModel {
   schemaValidCount(): number;
 }
 
+interface ObservedApproval {
+  callback: ((request: AgentApprovalRequest) => boolean | Promise<boolean>) | undefined;
+  failed(): boolean;
+}
+
 interface RunnerCall {
   input: JsonObject;
   output?: JsonValue;
@@ -71,10 +78,11 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
   const tools = createTravelTools(store);
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
   const observed = observeModel(options.model);
-  const approve = options.approve ?? defaultApproval(options.task);
+  const approval = observeApproval(options.approve ?? defaultApproval(options.task, fixture));
   let interrupted = false;
   let runtimeResult: AgentRunResult | undefined;
   let failure: BenchmarkFailure | undefined;
+  const observedEvents: AgentEvent[] = [];
 
   try {
     runtimeResult = await runAgentRuntime({
@@ -83,8 +91,9 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
       toolProvider: createStaticToolProvider(tools),
       getStateRevision: () => store.getState().revision,
       maxSteps: options.task.expected.toolCalls.max + 1,
-      ...(approve === undefined ? {} : { approve }),
+      ...(approval.callback === undefined ? {} : { approve: approval.callback }),
       onEvent: (event) => {
+        observedEvents.push(event);
         if (!interrupted && event.type === 'tool_call_validated' && fixture.interrupt !== undefined) {
           interrupted = true;
           fixture.interrupt(store);
@@ -92,11 +101,14 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
       },
     });
   } catch (error) {
-    failure = normalizeFailure(error, observed.generationFailed());
+    failure = normalizeFailure(error, observed.generationFailed(), approval.failed());
   }
 
   const completedAt = (options.now ?? (() => new Date()))();
-  const calls = runtimeResult === undefined ? [] : collectCalls(runtimeResult);
+  const calls = collectCalls(runtimeResult?.history ?? [], runtimeResult?.events ?? observedEvents);
+  if (failure === undefined && runtimeResult !== undefined) {
+    failure = failureFromRuntimeHistory(runtimeResult.history);
+  }
   const assertions = evaluateAssertions(options.task, runtimeResult, calls, toolsByName);
   const outcome = runtimeResult?.status ?? 'runtime_error';
   const result: BenchmarkResult = {
@@ -150,14 +162,42 @@ function observeModel(source: RuntimeModel): ObservedModel {
   };
 }
 
-function defaultApproval(task: BenchmarkTask): ((request: AgentApprovalRequest) => boolean) | undefined {
+function defaultApproval(
+  task: BenchmarkTask,
+  fixture: ReturnType<typeof benchmarkFixture>,
+): ((request: AgentApprovalRequest) => boolean) | undefined {
   if (task.expected.approval === 'denied') return () => false;
+  // A stale fixture changes revision immediately after validation. Let the
+  // runtime reach its post-approval stale guard for write-first scripts.
+  if (fixture.interrupt !== undefined) return () => true;
   return undefined;
 }
 
-function collectCalls(result: AgentRunResult): RunnerCall[] {
-  const history = new Map(result.history.map((entry) => [`${entry.step}:${entry.tool}`, entry]));
-  return result.events.flatMap((event) => {
+function observeApproval(
+  source: ((request: AgentApprovalRequest) => boolean | Promise<boolean>) | undefined,
+): ObservedApproval {
+  let failed = false;
+  return {
+    callback: source === undefined
+      ? undefined
+      : async (request) => {
+        try {
+          return await source(request);
+        } catch (error) {
+          failed = true;
+          throw error;
+        }
+      },
+    failed: () => failed,
+  };
+}
+
+function collectCalls(
+  historyEntries: readonly AgentToolResult[],
+  events: readonly AgentEvent[],
+): RunnerCall[] {
+  const history = new Map(historyEntries.map((entry) => [`${entry.step}:${entry.tool}`, entry]));
+  return events.flatMap((event) => {
     if (event.type !== 'tool_call_validated') return [];
     const executed = history.get(`${event.step}:${event.toolName}`);
     return [{
@@ -290,22 +330,46 @@ function rate(numerator: number, denominator: number): number {
   return denominator === 0 ? 1 : numerator / denominator;
 }
 
-function normalizeFailure(error: unknown, generationFailed: boolean): BenchmarkFailure {
-  const code = failureCode(error, generationFailed);
+function normalizeFailure(
+  error: unknown,
+  generationFailed: boolean,
+  approvalFailed: boolean,
+): BenchmarkFailure {
+  const code = failureCode(error, generationFailed, approvalFailed);
+  return benchmarkFailure(code, error instanceof Error ? error.message : String(error));
+}
+
+function failureFromRuntimeHistory(history: readonly AgentToolResult[]): BenchmarkFailure | undefined {
+  const failed = [...history].reverse().find((entry) => !entry.ok);
+  return failed === undefined
+    ? undefined
+    : benchmarkFailure('execution_failed', failed.error ?? 'Tool execution failed.');
+}
+
+function benchmarkFailure(code: BenchmarkFailureCode, message: string): BenchmarkFailure {
   const defaults = BENCHMARK_FAILURE_DEFAULTS[code];
   return {
     category: defaults.category,
     code,
-    message: error instanceof Error ? error.message : String(error),
+    message,
     retryable: defaults.retryable,
   } as BenchmarkFailure;
 }
 
-function failureCode(error: unknown, generationFailed: boolean): BenchmarkFailureCode {
+function failureCode(
+  error: unknown,
+  generationFailed: boolean,
+  approvalFailed: boolean,
+): BenchmarkFailureCode {
+  if (approvalFailed) return 'approval_failed';
   if (error instanceof AgentRuntimeError) {
     if (error.code === 'invalid_decision') {
-      return error.message.includes('malformed JSON') ? 'malformed_json' : 'invalid_decision';
+      if (error.message.includes('malformed JSON')) return 'malformed_json';
+      if (error.message.includes('unsupported decision type')) return 'unknown_decision_type';
+      return 'invalid_decision';
     }
+    if (error.code === 'invalid_tool_input' || error.code === 'resource_limit') return 'invalid_decision';
+    if (error.code === 'invalid_tool' || error.code === 'tool_changed') return 'tool_refresh_missing';
     if (error.code === 'tool_unavailable') return 'tool_unavailable';
     if (error.code === 'cancelled') return 'generation_cancelled';
   }

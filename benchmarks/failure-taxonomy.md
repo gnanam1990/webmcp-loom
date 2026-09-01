@@ -53,6 +53,7 @@ provider-specific aliases or override these defaults.
 | `retrieval` | `unknown_identifier` | `false` | The model supplied an identifier absent from prior results. |
 | `retrieval` | `identifier_reuse_failed` | `false` | A required identifier was not reused exactly. |
 | `approval` | `approval_missing` | `false` | A required approval transition was absent. |
+| `approval` | `approval_failed` | `true` | The supplied approval surface failed before it returned a decision. |
 | `approval` | `denial_mishandled` | `false` | A denied action did not terminate as denied. |
 | `approval` | `approval_bypassed` | `false` | A write executed without approval. |
 | `state` | `stale_stop_missing` | `false` | A stale run did not stop. |
