@@ -66,6 +66,8 @@ The model must return exactly one of:
 
 `readOnlyHint` is a security boundary. Missing or false means write-capable and causes an approval pause. When an approval callback is supplied, it receives a detached snapshot; mutating that object cannot alter the validated call.
 
+`maxSteps` bounds model decisions. Set `maxToolCalls` when a caller also needs a strict execution cap while reserving a final decision for the model.
+
 `getStateRevision` provides optimistic stale-state detection. The captured value is also passed to local executors as `expectedStateRevision`. A state-owning write executor must enforce that value atomically—such as with compare-and-swap—if concurrent edits are possible. Preflight revision checks alone cannot make an async write atomic.
 
 WebMCP's standard `executeTool()` options currently carry cancellation but not a custom revision token. A WebMCP-exposed state-changing tool must therefore put its expected revision in its own validated input contract and enforce it inside the page-owned executor.

@@ -7,6 +7,11 @@
  */
 
 export const BENCHMARK_SCHEMA_VERSION = 1 as const;
+/**
+ * The runtime permits at most twenty decisions. A benchmark that expects N
+ * tool calls also needs one final decision, so N must remain below that cap.
+ */
+export const BENCHMARK_MAX_TOOL_CALLS = 19 as const;
 
 export type BenchmarkCategory =
   | 'approval'
@@ -80,6 +85,7 @@ export type BenchmarkFailureCategory =
   | 'policy'
   | 'retrieval'
   | 'runtime'
+  | 'selection'
   | 'state'
   | 'tool';
 
@@ -95,10 +101,12 @@ export const BENCHMARK_FAILURE_DEFAULTS = {
   invalid_decision: { category: 'model_decision', retryable: false },
   unknown_decision_type: { category: 'model_decision', retryable: false },
   missing_read: { category: 'retrieval', retryable: false },
+  missing_required_tool: { category: 'selection', retryable: false },
   wrong_tool: { category: 'retrieval', retryable: false },
   unknown_identifier: { category: 'retrieval', retryable: false },
   identifier_reuse_failed: { category: 'retrieval', retryable: false },
   approval_missing: { category: 'approval', retryable: false },
+  approval_failed: { category: 'approval', retryable: true },
   denial_mishandled: { category: 'approval', retryable: false },
   approval_bypassed: { category: 'approval', retryable: false },
   stale_stop_missing: { category: 'state', retryable: false },
@@ -139,9 +147,11 @@ export interface BenchmarkModelDescriptor {
 }
 
 export interface BenchmarkToolCallRecord {
+  error?: string;
   inputJson: string;
   outputJson?: string;
   step: number;
+  status: 'failed' | 'succeeded' | 'validated';
   toolName: string;
 }
 
@@ -191,7 +201,11 @@ export function assertValidBenchmarkTask(task: BenchmarkTask): void {
     throw new Error(`Benchmark task ${task.id} needs unique categories.`);
   }
   const { min, max, requiredToolNames, forbiddenToolNames } = task.expected.toolCalls;
-  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min) {
+  if (!Number.isInteger(min)
+    || !Number.isInteger(max)
+    || min < 0
+    || max < min
+    || max > BENCHMARK_MAX_TOOL_CALLS) {
     throw new Error(`Benchmark task ${task.id} has invalid tool-call bounds.`);
   }
   if (requiredToolNames.some((tool) => !tool.trim())) {

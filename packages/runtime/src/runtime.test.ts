@@ -231,6 +231,22 @@ describe('runAgentRuntime', () => {
     expect(result.history).toHaveLength(1);
   });
 
+  it('does not execute a tool after reaching an explicit tool-call cap', async () => {
+    const execute = vi.fn(() => ({ found: true }));
+    const result = await runAgentRuntime({
+      goal: 'Inspect twice.',
+      maxSteps: 3,
+      maxToolCalls: 1,
+      model: model(call(), call()),
+      toolProvider: createStaticToolProvider([tool({ execute })]),
+    });
+
+    expect(result.status).toBe('step_limit');
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.history).toHaveLength(1);
+    expect(result.events).toContainEqual({ type: 'step_limit_reached', step: 2 });
+  });
+
   it('rejects oversized goals, decisions, inputs and invalid maxSteps', async () => {
     const provider = createStaticToolProvider([tool()]);
     await expect(runAgentRuntime({
