@@ -35,8 +35,23 @@ const agentDecisionSchema = {
   ],
 } as const;
 
-export function getAgentDecisionSchema(): JsonSchema {
-  return cloneJsonObject(agentDecisionSchema);
+export function getAgentDecisionSchema(tools?: readonly RuntimeTool[]): JsonSchema {
+  if (tools === undefined) return cloneJsonObject(agentDecisionSchema);
+  return {
+    oneOf: [
+      cloneJsonObject(agentDecisionSchema.oneOf[1]),
+      ...tools.map((tool) => ({
+        type: 'object',
+        properties: {
+          type: { const: 'tool_call' },
+          tool: { const: tool.name },
+          input: cloneJsonObject(tool.inputSchema),
+        },
+        required: ['type', 'tool', 'input'],
+        additionalProperties: false,
+      })),
+    ],
+  };
 }
 
 export function parseAgentDecision(raw: string): AgentDecision {
