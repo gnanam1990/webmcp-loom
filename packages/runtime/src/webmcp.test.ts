@@ -4,6 +4,7 @@ import type { RuntimeTool } from './types.js';
 import {
   createWebMcpToolProvider,
   installDocumentRuntimeTools,
+  installDocumentRuntimeToolsWithPageLifecycle,
   registerRuntimeTools,
 } from './webmcp.js';
 import type {
@@ -48,6 +49,16 @@ function context(overrides: Partial<WebMcpModelContext> = {}): WebMcpModelContex
     executeTool: vi.fn(async () => JSON.stringify({ ready: true })),
     ...overrides,
   };
+}
+
+function page(): Window {
+  return new EventTarget() as unknown as Window;
+}
+
+function pagehide(persisted: boolean): Event {
+  const event = new Event('pagehide');
+  Object.defineProperty(event, 'persisted', { value: persisted });
+  return event;
 }
 
 afterEach(() => {
@@ -383,5 +394,64 @@ describe('installDocumentRuntimeTools', () => {
     expect(registration).not.toBeNull();
     expect(platformPrototype.registerTool).toHaveBeenCalledTimes(1);
     registration?.dispose();
+  });
+});
+
+describe('installDocumentRuntimeToolsWithPageLifecycle', () => {
+  it('preserves registrations through BFCache and disposes them on terminal pagehide', async () => {
+    const browserPage = page();
+    let toolSignal: AbortSignal | undefined;
+    const modelContext = context({
+      registerTool: vi.fn(async (_definition, options) => {
+        toolSignal = options?.signal;
+      }),
+    });
+    vi.stubGlobal('document', { defaultView: browserPage, modelContext });
+
+    const registration = await installDocumentRuntimeToolsWithPageLifecycle([runtimeTool()]);
+    expect(registration).not.toBeNull();
+
+    browserPage.dispatchEvent(pagehide(true));
+    expect(registration?.signal.aborted).toBe(false);
+    expect(toolSignal?.aborted).toBe(false);
+
+    browserPage.dispatchEvent(pagehide(false));
+    expect(registration?.signal.aborted).toBe(true);
+    expect(toolSignal?.aborted).toBe(true);
+  });
+
+  it('cancels a pending registration when the page terminates', async () => {
+    const browserPage = page();
+    let toolSignal: AbortSignal | undefined;
+    const modelContext = context({
+      registerTool: vi.fn((_definition, options) => new Promise<void>(() => {
+        toolSignal = options?.signal;
+      })),
+    });
+    vi.stubGlobal('document', { defaultView: browserPage, modelContext });
+
+    const pending = installDocumentRuntimeToolsWithPageLifecycle([runtimeTool()]);
+    await vi.waitFor(() => {
+      expect(toolSignal).toBeDefined();
+    });
+    browserPage.dispatchEvent(pagehide(false));
+
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+    expect(toolSignal?.aborted).toBe(true);
+  });
+
+  it('keeps the caller cancellation contract while the page is live', async () => {
+    const browserPage = page();
+    const external = new AbortController();
+    const modelContext = context();
+    vi.stubGlobal('document', { defaultView: browserPage, modelContext });
+
+    const registration = await installDocumentRuntimeToolsWithPageLifecycle(
+      [runtimeTool()],
+      { signal: external.signal },
+    );
+    external.abort();
+
+    expect(registration?.signal.aborted).toBe(true);
   });
 });

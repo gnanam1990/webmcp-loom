@@ -7,6 +7,7 @@ export { assertValidToolSchema, validateToolInput } from './schema.js';
 export {
   createWebMcpToolProvider,
   installDocumentRuntimeTools,
+  installDocumentRuntimeToolsWithPageLifecycle,
   registerRuntimeTools,
 } from './webmcp.js';
 export type { AgentRuntimeErrorCode } from './errors.js';

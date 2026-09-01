@@ -1,6 +1,6 @@
 import {
   createWebMcpToolProvider,
-  installDocumentRuntimeTools,
+  installDocumentRuntimeToolsWithPageLifecycle,
   runAgentRuntime,
 } from '../../packages/runtime/dist/index.js';
 import { createTaskBoard, createTaskBoardTools } from './taskboard.js';
@@ -81,33 +81,22 @@ function disableWebMcpActions() {
 }
 
 let installed = null;
-let terminalPagehide = false;
 let registrationFailed = false;
-const lifecycle = new document.defaultView.AbortController();
-document.defaultView?.addEventListener('pagehide', (event) => {
-  if (event.persisted) return;
-  terminalPagehide = true;
-  lifecycle.abort();
-  installed?.dispose();
-});
 
 try {
-  installed = await installDocumentRuntimeTools(tools, { signal: lifecycle.signal });
-  if (terminalPagehide) installed?.dispose();
+  installed = await installDocumentRuntimeToolsWithPageLifecycle(tools);
 } catch {
-  if (!terminalPagehide) {
-    registrationFailed = true;
-    status.textContent = 'WebMCP registration failed';
-    status.dataset.state = 'failed';
-    disableWebMcpActions();
-  }
+  registrationFailed = true;
+  status.textContent = 'WebMCP registration failed';
+  status.dataset.state = 'failed';
+  disableWebMcpActions();
 }
 
-if (installed === null && !registrationFailed && !terminalPagehide) {
+if (installed === null && !registrationFailed) {
   status.textContent = 'WebMCP unavailable in this browser';
   status.dataset.state = 'unsupported';
   disableWebMcpActions();
-} else if (installed !== null && !terminalPagehide) {
+} else if (installed !== null) {
   status.textContent = 'WebMCP tools registered';
   status.dataset.state = 'registered';
   handoff.addEventListener('click', () => start(document.modelContext));
