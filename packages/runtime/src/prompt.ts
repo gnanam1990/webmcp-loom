@@ -39,7 +39,7 @@ export function getAgentDecisionSchema(tools?: readonly RuntimeTool[]): JsonSche
   if (tools === undefined) return cloneJsonObject(agentDecisionSchema);
   return {
     oneOf: [
-      agentDecisionSchema.oneOf[1],
+      cloneJsonObject(agentDecisionSchema.oneOf[1]),
       ...tools.map((tool) => ({
         type: 'object',
         properties: {
