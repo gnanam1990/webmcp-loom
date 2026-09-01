@@ -19,6 +19,20 @@ function assertExactKeys(input: unknown, allowed: readonly string[]): void {
   }
 }
 
+function assertStageInput(input: unknown): asserts input is {
+  expectedRevision: number;
+  title: string;
+} {
+  assertExactKeys(input, ['expectedRevision', 'title']);
+  const value = input as Record<string, unknown>;
+  if (!Number.isInteger(value.expectedRevision) || value.expectedRevision < 1
+    || typeof value.title !== 'string'
+    || value.title.length < 1
+    || value.title.length > 80) {
+    throw new Error('Tool input does not match its schema.');
+  }
+}
+
 const tools: RuntimeTool[] = [
   {
     name: 'get_board',
@@ -46,7 +60,7 @@ const tools: RuntimeTool[] = [
     },
     annotations: { readOnlyHint: false },
     execute: (input) => {
-      assertExactKeys(input, ['expectedRevision', 'title']);
+      assertStageInput(input);
       return board.stage(input.expectedRevision, input.title);
     },
   },
