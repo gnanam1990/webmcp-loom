@@ -8,6 +8,19 @@
 
 const MAX_TASK_TITLE_CHARACTERS = 80;
 
+/** Returns whether a value is a plain JSON-style object. */
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Rejects direct WebMCP calls that do not match a tool's closed object schema. */
+function requireExactKeys(input, allowedKeys) {
+  if (!isObject(input) || Object.keys(input).some((key) => !allowedKeys.includes(key))) {
+    throw new Error('Tool input does not match its schema.');
+  }
+}
+
+/** Creates an isolated revisioned task board for the fixture page. */
 export function createTaskBoard() {
   let revision = 1;
   let nextId = 1;
@@ -30,7 +43,8 @@ export function createTaskBoard() {
     }
   };
   const add = (title) => {
-    if (typeof title !== 'string' || !title.trim() || title.length > MAX_TASK_TITLE_CHARACTERS) {
+    if (typeof title !== 'string' || !title.trim()
+      || Array.from(title).length > MAX_TASK_TITLE_CHARACTERS) {
       throw new Error(`title must contain 1-${MAX_TASK_TITLE_CHARACTERS} characters.`);
     }
     const task = { id: `task-${nextId}`, title: title.trim() };
@@ -65,7 +79,10 @@ export function createTaskBoardTools(board) {
       description: 'Read every staged task and the revision required before staging another task.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
-      execute: () => board.getSnapshot(),
+      execute: (input) => {
+        requireExactKeys(input, []);
+        return board.getSnapshot();
+      },
     },
     {
       name: 'stage_task',
@@ -82,6 +99,7 @@ export function createTaskBoardTools(board) {
       },
       annotations: { readOnlyHint: false },
       execute: (input, context) => {
+        requireExactKeys(input, ['expectedRevision', 'title']);
         const expectedRevision = input.expectedRevision;
         if (!Number.isInteger(expectedRevision)) {
           throw new Error('expectedRevision must be an integer.');

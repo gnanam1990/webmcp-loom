@@ -46,6 +46,25 @@ async function taskBoardRuntime(board, model, { approve = undefined, onEvent = u
 }
 
 describe('non-travel task-board WebMCP fixture', () => {
+  it('uses the same Unicode character limit as its tool schema', () => {
+    const board = createTaskBoard();
+
+    expect(board.addAsHuman('😀'.repeat(80)).task.title).toHaveLength(160);
+    expect(() => board.addAsHuman('😀'.repeat(81))).toThrow('title must contain 1-80 characters.');
+  });
+
+  it('rejects malformed direct calls before they reach board state', async () => {
+    const board = createTaskBoard();
+    const [read, stage] = createTaskBoardTools(board);
+
+    expect(() => read.execute({ unexpected: true })).toThrow('Tool input does not match its schema.');
+    expect(() => stage.execute(
+      { expectedRevision: 1, title: 'Malformed', unexpected: true },
+      {},
+    )).toThrow('Tool input does not match its schema.');
+    expect(board.getSnapshot()).toEqual({ revision: 1, tasks: [] });
+  });
+
   it('uses one registered tool surface for WebMCP discovery and an approval handoff', async () => {
     const board = createTaskBoard();
     const { context, registration, result } = await taskBoardRuntime(board, decisionScript([

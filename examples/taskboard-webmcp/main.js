@@ -16,6 +16,7 @@ const stage = document.querySelector('#stage');
 const humanEdit = document.querySelector('#human-edit');
 const stale = document.querySelector('#stale');
 
+/** Renders the page-owned board state without trusting model output as HTML. */
 function render() {
   const snapshot = board.getSnapshot();
   revision.textContent = `Revision ${snapshot.revision}`;
@@ -32,6 +33,7 @@ function render() {
   }
 }
 
+/** Creates a deterministic demo model that reads before proposing a write. */
 function scriptFor(title) {
   let step = 0;
   return {
@@ -47,6 +49,7 @@ function scriptFor(title) {
   };
 }
 
+/** Displays the runtime result and its event trace. */
 function show(result) {
   status.textContent = result.status.replaceAll('_', ' ');
   status.dataset.state = result.status;
@@ -54,6 +57,7 @@ function show(result) {
   render();
 }
 
+/** Runs the runtime against the document-facing WebMCP tool registry. */
 async function start(context, approve, onEvent = undefined) {
   const provider = createWebMcpToolProvider(context, {
     fromOrigins: [document.location.origin],
@@ -70,17 +74,40 @@ async function start(context, approve, onEvent = undefined) {
   show(result);
 }
 
-const installed = await installDocumentRuntimeTools(tools);
-if (installed === null) {
-  status.textContent = 'WebMCP unavailable in this browser';
-  status.dataset.state = 'unsupported';
+function disableWebMcpActions() {
   handoff.disabled = true;
   stage.disabled = true;
   stale.disabled = true;
-} else {
-  document.defaultView?.addEventListener('pagehide', (event) => {
-    if (!event.persisted) installed.dispose();
-  });
+}
+
+let installed = null;
+let terminalPagehide = false;
+let registrationFailed = false;
+const lifecycle = new document.defaultView.AbortController();
+document.defaultView?.addEventListener('pagehide', (event) => {
+  if (event.persisted) return;
+  terminalPagehide = true;
+  lifecycle.abort();
+  installed?.dispose();
+});
+
+try {
+  installed = await installDocumentRuntimeTools(tools, { signal: lifecycle.signal });
+  if (terminalPagehide) installed?.dispose();
+} catch {
+  if (!terminalPagehide) {
+    registrationFailed = true;
+    status.textContent = 'WebMCP registration failed';
+    status.dataset.state = 'failed';
+    disableWebMcpActions();
+  }
+}
+
+if (installed === null && !registrationFailed && !terminalPagehide && !lifecycle.signal.aborted) {
+  status.textContent = 'WebMCP unavailable in this browser';
+  status.dataset.state = 'unsupported';
+  disableWebMcpActions();
+} else if (installed !== null && !terminalPagehide) {
   status.textContent = 'WebMCP tools registered';
   status.dataset.state = 'registered';
   handoff.addEventListener('click', () => start(document.modelContext));
