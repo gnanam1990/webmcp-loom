@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "benchmark:ollama": "node --experimental-strip-types --import ./scripts/register-typescript-source-loader.mjs scripts/run-local-ollama.mjs",
     "lint": "eslint .",
     "smoke": "npm run build && npm run smoke:built",
     "smoke:built": "node scripts/runtime-smoke.mjs",
