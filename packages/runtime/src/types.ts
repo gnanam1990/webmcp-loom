@@ -31,6 +31,17 @@ export interface RuntimeToolProvider {
     | readonly RuntimeTool[];
 }
 
+/** A deterministic, page-owned selector that narrows only the model prompt. */
+export interface RuntimeToolSelectorContext {
+  goal: string;
+  history: readonly AgentToolResult[];
+  stateRevision: RuntimeStateRevision | undefined;
+  step: number;
+  tools: readonly RuntimeTool[];
+}
+
+export type RuntimeToolSelector = (context: RuntimeToolSelectorContext) => readonly string[];
+
 export interface RuntimeModelRequest {
   prompt: string;
   responseSchema: JsonSchema;
@@ -111,4 +122,5 @@ export interface AgentRunOptions {
   maxToolCalls?: number;
   onEvent?: (event: AgentEvent) => Promise<void> | void;
   signal?: AbortSignal;
+  toolSelector?: RuntimeToolSelector;
 }

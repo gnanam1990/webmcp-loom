@@ -54,14 +54,15 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
     for (let step = 1; step <= maxSteps; step += 1) {
       currentStep = step;
       throwIfAborted(options.signal);
-      const promptTools = await refreshTools(options, step, 'prompt', emit);
+      const availablePromptTools = await refreshTools(options, step, 'prompt', emit);
       const stateRevision = await readStateRevision(options);
       throwIfAborted(options.signal);
+      const promptTools = selectPromptTools(options, availablePromptTools, goal, history, stateRevision, step);
 
       const rawDecision = await raceWithAbort(
         options.model.generate({
           prompt: buildAgentRuntimePrompt(goal, promptTools, history, stateRevision),
-          responseSchema: getAgentDecisionSchema(),
+          responseSchema: getAgentDecisionSchema(promptTools),
           signal: options.signal,
         }),
         options.signal,
@@ -239,6 +240,29 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
 
   emit({ type: 'step_limit_reached', step: maxSteps });
   return { status: 'step_limit', history, events };
+}
+
+function selectPromptTools(
+  options: AgentRunOptions,
+  tools: readonly RuntimeTool[],
+  goal: string,
+  history: readonly AgentToolResult[],
+  stateRevision: RuntimeStateRevision | undefined,
+  step: number,
+): readonly RuntimeTool[] {
+  if (options.toolSelector === undefined) return tools;
+  const selectedNames = options.toolSelector({ goal, history, stateRevision, step, tools });
+  if (!Array.isArray(selectedNames) || selectedNames.length === 0) {
+    throw configurationError('Tool selector must return at least one advertised tool name.');
+  }
+  if (selectedNames.some((name) => typeof name !== 'string')) {
+    throw configurationError('Tool selector must return only tool names.');
+  }
+  const selected = selectedNames.map((name) => tools.find((tool) => tool.name === name));
+  if (selected.some((tool) => tool === undefined) || new Set(selectedNames).size !== selectedNames.length) {
+    throw configurationError('Tool selector returned an unavailable or duplicate tool name.');
+  }
+  return selected as RuntimeTool[];
 }
 
 async function refreshTools(
