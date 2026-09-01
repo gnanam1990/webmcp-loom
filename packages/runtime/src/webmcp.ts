@@ -207,14 +207,14 @@ export async function installDocumentRuntimeToolsWithPageLifecycle(
     throw error;
   }
 
-  if (lifecycle.signal.aborted) {
-    registration?.dispose();
-    cleanup();
-    throw new AgentRuntimeError('cancelled', 'WebMCP page lifecycle ended during registration.');
-  }
   if (registration === null) {
     cleanup();
     return null;
+  }
+  if (lifecycle.signal.aborted) {
+    registration.dispose();
+    cleanup();
+    throw new AgentRuntimeError('cancelled', 'WebMCP page lifecycle ended during registration.');
   }
   return {
     signal: registration.signal,

@@ -398,6 +398,29 @@ describe('installDocumentRuntimeTools', () => {
 });
 
 describe('installDocumentRuntimeToolsWithPageLifecycle', () => {
+  it('falls back to the plain installer when no page window exists', async () => {
+    const modelContext = context();
+    vi.stubGlobal('document', { defaultView: null, modelContext });
+
+    const registration = await installDocumentRuntimeToolsWithPageLifecycle([runtimeTool()]);
+
+    expect(registration).not.toBeNull();
+    expect(modelContext.registerTool).toHaveBeenCalledTimes(1);
+    registration?.dispose();
+  });
+
+  it('returns null when unsupported registration is cancelled during setup', async () => {
+    const browserPage = page();
+    const external = new AbortController();
+    vi.stubGlobal('document', { defaultView: browserPage });
+    external.abort();
+
+    await expect(installDocumentRuntimeToolsWithPageLifecycle(
+      [runtimeTool()],
+      { signal: external.signal },
+    )).resolves.toBeNull();
+  });
+
   it('preserves registrations through BFCache and disposes them on terminal pagehide', async () => {
     const browserPage = page();
     let toolSignal: AbortSignal | undefined;
