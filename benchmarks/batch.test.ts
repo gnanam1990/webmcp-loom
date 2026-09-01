@@ -26,6 +26,7 @@ describe('benchmark batch runner', () => {
         attemptCount: 2,
         completeTaskPassRate: 1,
         decisionCount: 4,
+        identifierReuseRate: 1,
         schemaValidRate: 1,
         successfulAttemptCount: 2,
       },
@@ -49,7 +50,31 @@ describe('benchmark batch runner', () => {
       attemptCount: 0,
       completeTaskPassRate: 0,
       decisionCount: 0,
+      identifierReuseRate: 1,
       schemaValidRate: 1,
     });
+  });
+
+  it('reports identifier-reuse evidence from applicable attempts', async () => {
+    const tasks = SMOKE_TASKS.filter(({ id }) => id === 'smoke-select-kyoto-stay');
+    const report = await runBenchmarkBatch({
+      approve: () => true,
+      attemptsPerTask: 1,
+      createModel: () => createScriptedModel([
+        { tool: 'search_stays', input: { cityId: 'kyoto', maxPricePerNightInr: 6_000 } },
+        {
+          tool: 'add_itinerary_item',
+          input: {
+            expectedRevision: '$revision', kind: 'stay', refId: 'st-kyo-mid', date: '2026-11-10', nights: 3,
+          },
+        },
+        { tool: null, message: 'Staged the stay.' },
+      ]),
+      model: MODEL,
+      now: () => new Date('2026-09-01T00:00:00.000Z'),
+      tasks,
+    });
+
+    expect(report.summary.identifierReuseRate).toBe(1);
   });
 });

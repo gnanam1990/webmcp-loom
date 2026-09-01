@@ -17,6 +17,7 @@ export interface BenchmarkBatchSummary {
   attemptCount: number;
   completeTaskPassRate: number;
   decisionCount: number;
+  identifierReuseRate: number;
   meanEndToEndLatencyMs: number;
   schemaValidRate: number;
   successfulAttemptCount: number;
@@ -63,6 +64,7 @@ export function summarizeBenchmarkResults(results: readonly BenchmarkResult[]): 
       attemptCount: 0,
       completeTaskPassRate: 0,
       decisionCount: 0,
+      identifierReuseRate: 1,
       meanEndToEndLatencyMs: 0,
       schemaValidRate: 1,
       successfulAttemptCount: 0,
@@ -70,10 +72,16 @@ export function summarizeBenchmarkResults(results: readonly BenchmarkResult[]): 
   }
   const decisionCount = results.reduce((total, result) => total + result.metrics.decisionCount, 0);
   const successfulAttemptCount = results.filter((result) => result.assertions.every(({ passed }) => passed)).length;
+  const identifierReuseAssertions = results.flatMap((result) => (
+    result.assertions.filter(({ name }) => name.startsWith('identifier-reuse:'))
+  ));
   return {
     attemptCount: results.length,
     completeTaskPassRate: successfulAttemptCount / results.length,
     decisionCount,
+    identifierReuseRate: identifierReuseAssertions.length === 0
+      ? 1
+      : identifierReuseAssertions.filter(({ passed }) => passed).length / identifierReuseAssertions.length,
     meanEndToEndLatencyMs: results.reduce((total, result) => (
       total + result.metrics.endToEndLatencyMs
     ), 0) / results.length,
