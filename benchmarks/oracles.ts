@@ -170,6 +170,110 @@ export const TASK_ORACLES: Readonly<Record<string, readonly OracleCall[]>> = Obj
     { tool: 'get_itinerary', input: {} },
   ],
 
+  'travel-decline-rail-booking': [
+    { tool: 'get_trip_constraints', input: {} },
+  ],
+
+  'travel-find-free-kyoto-culture': [
+    { tool: 'search_activities', input: { cityId: 'kyoto', tag: 'culture', maxPriceInr: 0 } },
+  ],
+
+  'travel-find-budget-tokyo-stay': [
+    { tool: 'search_stays', input: { cityId: 'tokyo', maxPricePerNightInr: 3_500 } },
+  ],
+
+  'travel-find-daytime-return-flight': [
+    {
+      tool: 'search_flights',
+      input: { destinationCode: 'BLR', departureDate: '2026-11-14', excludeRedEye: true },
+    },
+  ],
+
+  'travel-stage-tokyo-culture': [
+    { tool: 'search_activities', input: { cityId: 'tokyo', tag: 'culture' } },
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'activity',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.activity,
+        date: '2026-11-06',
+      },
+    },
+  ],
+
+  'travel-stage-free-kyoto-culture': [
+    { tool: 'search_activities', input: { cityId: 'kyoto', tag: 'culture', maxPriceInr: 0 } },
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'activity',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.activity,
+        date: '2026-11-11',
+      },
+    },
+  ],
+
+  'travel-stage-osaka-stay': [
+    { tool: 'search_stays', input: { cityId: 'osaka', maxPricePerNightInr: 3_000 } },
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'stay',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.stay,
+        date: '2026-11-11',
+        nights: 2,
+      },
+    },
+  ],
+
+  'travel-stage-return-under-cap': [
+    {
+      tool: 'search_flights',
+      input: {
+        destinationCode: 'BLR',
+        departureDate: '2026-11-14',
+        maxPriceInr: 40_000,
+        excludeRedEye: true,
+      },
+    },
+    {
+      tool: 'add_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        kind: 'flight',
+        refId: SEARCH_RESULT_ID_PLACEHOLDER.flight,
+        date: '2026-11-14',
+      },
+    },
+  ],
+
+  'travel-move-tokyo-stay': [
+    { tool: 'get_itinerary', input: {} },
+    {
+      tool: 'move_itinerary_item',
+      input: {
+        expectedRevision: revision,
+        itemId: ITEM_ID_PLACEHOLDER.stay,
+        toDate: '2026-11-06',
+      },
+    },
+  ],
+
+  'travel-remove-tokyo-stay': [
+    { tool: 'get_itinerary', input: {} },
+    {
+      tool: 'remove_itinerary_item',
+      input: { expectedRevision: revision, itemId: ITEM_ID_PLACEHOLDER.stay },
+    },
+  ],
+
+  'travel-stop-move-after-human-edit': [
+    { tool: 'get_itinerary', input: {} },
+  ],
+
   'travel-build-two-city-plan': [
     { tool: 'get_trip_constraints', input: {} },
     {
