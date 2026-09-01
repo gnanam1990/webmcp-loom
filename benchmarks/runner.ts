@@ -126,6 +126,7 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
       toolProvider: createStaticToolProvider(observedTools),
       getStateRevision: () => store.getState().revision,
       maxSteps: options.task.expected.toolCalls.max + 1,
+      maxToolCalls: options.task.expected.toolCalls.max,
       ...(approval.callback === undefined ? {} : { approve: approval.callback }),
       onEvent: (event) => {
         observedEvents.push(event);
@@ -155,7 +156,7 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
     failure = failureFromRuntimeHistory(runtimeResult.history);
   }
   const assertions = evaluateAssertions(options.task, runtimeResult, calls, toolsByName);
-  if (failure === undefined) failure = failureFromAssertions(assertions);
+  if (failure === undefined) failure = failureFromAssertions(assertions, toolsByName);
   const outcome = runtimeResult?.status ?? 'runtime_error';
   const result: BenchmarkResult = {
     assertions,
@@ -434,7 +435,10 @@ function failureFromRuntimeHistory(history: readonly AgentToolResult[]): Benchma
     : benchmarkFailure('execution_failed', failed.error ?? 'Tool execution failed.');
 }
 
-function failureFromAssertions(assertions: readonly BenchmarkAssertion[]): BenchmarkFailure | undefined {
+function failureFromAssertions(
+  assertions: readonly BenchmarkAssertion[],
+  toolsByName: ReadonlyMap<string, RuntimeTool>,
+): BenchmarkFailure | undefined {
   const failed = assertions.filter((assertion) => !assertion.passed);
   const named = (prefix: string): BenchmarkAssertion | undefined => failed.find(({ name }) => name.startsWith(prefix));
   const forbidden = named('forbidden-tool:');
@@ -447,7 +451,13 @@ function failureFromAssertions(assertions: readonly BenchmarkAssertion[]): Bench
   const reuse = named('identifier-reuse:');
   if (reuse !== undefined) return benchmarkFailure('identifier_reuse_failed', `${reuse.name}: ${reuse.actual}`);
   const required = named('required-tool:');
-  if (required !== undefined) return benchmarkFailure('missing_read', `${required.name}: ${required.actual}`);
+  if (required !== undefined) {
+    const toolName = required.name.slice('required-tool:'.length);
+    const code = toolsByName.get(toolName)?.annotations.readOnlyHint
+      ? 'missing_read'
+      : 'missing_required_tool';
+    return benchmarkFailure(code, `${required.name}: ${required.actual}`);
+  }
   const bounds = named('tool-call-bounds');
   if (bounds !== undefined) return benchmarkFailure('step_accounting_invalid', `${bounds.name}: ${bounds.actual}`);
   const state = named('state-effect');

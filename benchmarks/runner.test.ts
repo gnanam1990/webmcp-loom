@@ -346,4 +346,32 @@ describe('deterministic benchmark runner', () => {
 
     expect(result).toMatchObject({ outcome: 'completed', failure: { code: 'missing_read', category: 'retrieval' } });
   });
+
+  it('does not misclassify a missing required write as a missing read', async () => {
+    const base = task('smoke-select-kyoto-stay');
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([{ tool: null, message: 'Finished without staging a stay.' }]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      task: {
+        ...base,
+        expected: {
+          ...base.expected,
+          approval: 'none',
+          identifierReuses: [],
+          toolCalls: {
+            ...base.expected.toolCalls,
+            min: 1,
+            max: 1,
+            requiredToolNames: ['add_itinerary_item'],
+          },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      outcome: 'completed',
+      failure: { code: 'missing_required_tool', category: 'selection' },
+    });
+  });
 });

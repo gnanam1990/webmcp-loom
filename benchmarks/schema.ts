@@ -85,6 +85,7 @@ export type BenchmarkFailureCategory =
   | 'policy'
   | 'retrieval'
   | 'runtime'
+  | 'selection'
   | 'state'
   | 'tool';
 
@@ -100,6 +101,7 @@ export const BENCHMARK_FAILURE_DEFAULTS = {
   invalid_decision: { category: 'model_decision', retryable: false },
   unknown_decision_type: { category: 'model_decision', retryable: false },
   missing_read: { category: 'retrieval', retryable: false },
+  missing_required_tool: { category: 'selection', retryable: false },
   wrong_tool: { category: 'retrieval', retryable: false },
   unknown_identifier: { category: 'retrieval', retryable: false },
   identifier_reuse_failed: { category: 'retrieval', retryable: false },

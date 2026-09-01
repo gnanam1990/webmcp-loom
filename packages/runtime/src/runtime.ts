@@ -35,9 +35,11 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
     throw new AgentRuntimeError('resource_limit', 'Agent goal exceeded the runtime size limit.');
   }
   const maxSteps = normalizeMaxSteps(options.maxSteps);
+  const maxToolCalls = normalizeMaxToolCalls(options.maxToolCalls);
   const history: AgentToolResult[] = [];
   const events: AgentEvent[] = [];
   let currentStep = 0;
+  let executedToolCalls = 0;
   const emit = (event: AgentEvent): void => {
     const stored = cloneEvent(event);
     events.push(stored);
@@ -79,6 +81,11 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
       if (decision.type === 'final') {
         emit({ type: 'completed', step, message: decision.message });
         return { status: 'completed', message: decision.message, history, events };
+      }
+
+      if (maxToolCalls !== undefined && executedToolCalls >= maxToolCalls) {
+        emit({ type: 'step_limit_reached', step });
+        return { status: 'step_limit', history, events };
       }
 
       const advertisedTool = promptTools.find(({ name }) => name === decision.tool);
@@ -159,6 +166,7 @@ export async function runAgentRuntime(options: AgentRunOptions): Promise<AgentRu
       }
 
       throwIfAborted(options.signal);
+      executedToolCalls += 1;
       emit({ type: 'tool_started', step, toolName: activeTool.name });
       throwIfAborted(options.signal);
       let output: JsonValue;
@@ -335,6 +343,14 @@ function normalizeMaxSteps(value: number | undefined): number {
     throw configurationError(`maxSteps must be an integer between 1 and ${MAX_ALLOWED_STEPS}.`);
   }
   return maxSteps;
+}
+
+function normalizeMaxToolCalls(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value < 0 || value > MAX_ALLOWED_STEPS) {
+    throw configurationError(`maxToolCalls must be an integer between 0 and ${MAX_ALLOWED_STEPS}.`);
+  }
+  return value;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

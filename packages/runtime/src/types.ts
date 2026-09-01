@@ -104,6 +104,11 @@ export interface AgentRunOptions {
   approve?: (request: AgentApprovalRequest) => boolean | Promise<boolean>;
   getStateRevision?: () => Promise<RuntimeStateRevision> | RuntimeStateRevision;
   maxSteps?: number;
+  /**
+   * Strict cap on calls that reach execution. Unlike `maxSteps`, this leaves
+   * room for a terminal model decision after the final allowed tool call.
+   */
+  maxToolCalls?: number;
   onEvent?: (event: AgentEvent) => Promise<void> | void;
   signal?: AbortSignal;
 }

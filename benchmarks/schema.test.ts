@@ -51,7 +51,9 @@ describe('benchmark foundation', () => {
       .toEqual({ category: 'adapter', retryable: true });
     expect(BENCHMARK_FAILURE_DEFAULTS.approval_failed)
       .toEqual({ category: 'approval', retryable: true });
-    expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(30);
+    expect(BENCHMARK_FAILURE_DEFAULTS.missing_required_tool)
+      .toEqual({ category: 'selection', retryable: false });
+    expect(Object.keys(BENCHMARK_FAILURE_DEFAULTS)).toHaveLength(31);
   });
 
   it('rejects whitespace-only tool names and identifier-reuse fields', () => {
