@@ -145,9 +145,11 @@ export interface BenchmarkModelDescriptor {
 }
 
 export interface BenchmarkToolCallRecord {
+  error?: string;
   inputJson: string;
   outputJson?: string;
   step: number;
+  status: 'failed' | 'succeeded' | 'validated';
   toolName: string;
 }
 

@@ -56,9 +56,11 @@ interface ObservedApproval {
 }
 
 interface RunnerCall {
+  error?: string;
   input: JsonObject;
   output?: JsonValue;
   step: number;
+  status: 'failed' | 'succeeded' | 'validated';
   tool: string;
 }
 
@@ -70,10 +72,15 @@ interface RunnerCall {
  * selected; those are separate report and review decisions.
  */
 export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise<BenchmarkResult> {
-  assertValidBenchmarkTask(options.task);
   const startedAt = (options.now ?? (() => new Date()))();
   const startedMs = startedAt.getTime();
-  const fixture = benchmarkFixture(options.task.fixture);
+  let fixture: ReturnType<typeof benchmarkFixture>;
+  try {
+    assertValidBenchmarkTask(options.task);
+    fixture = benchmarkFixture(options.task.fixture);
+  } catch (error) {
+    return configurationResult(options, startedAt, error);
+  }
   const store = fixture.createStore();
   const tools = createTravelTools(store);
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -83,17 +90,54 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
   let runtimeResult: AgentRunResult | undefined;
   let failure: BenchmarkFailure | undefined;
   const observedEvents: AgentEvent[] = [];
+  const validatedCalls = new Map<number, { input: JsonObject; tool: string }>();
+  let activeCall: { input: JsonObject; step: number; tool: string } | undefined;
+  const observedHistory: AgentToolResult[] = [];
+  const observedTools = tools.map((tool) => ({
+    ...tool,
+    execute: async (input: JsonObject, context: Parameters<typeof tool.execute>[1]): Promise<unknown> => {
+      const call = activeCall?.tool === tool.name ? activeCall : undefined;
+      try {
+        const output = await tool.execute(input, context);
+        // The public runtime remains the output-normalization authority. Travel
+        // tools are JSON-contract tools, so this shadow history is only used if
+        // a later runtime step throws before its normalized history is returned.
+        if (call !== undefined) observedHistory.push({ ...call, ok: true, output: output as JsonValue });
+        return output;
+      } catch (error) {
+        if (call !== undefined) {
+          observedHistory.push({
+            ...call,
+            error: error instanceof Error ? error.message : String(error),
+            ok: false,
+          });
+        }
+        throw error;
+      } finally {
+        if (activeCall === call) activeCall = undefined;
+      }
+    },
+  }));
 
   try {
     runtimeResult = await runAgentRuntime({
       goal: options.task.goal,
       model: observed.model,
-      toolProvider: createStaticToolProvider(tools),
+      toolProvider: createStaticToolProvider(observedTools),
       getStateRevision: () => store.getState().revision,
       maxSteps: options.task.expected.toolCalls.max + 1,
       ...(approval.callback === undefined ? {} : { approve: approval.callback }),
       onEvent: (event) => {
         observedEvents.push(event);
+        if (event.type === 'tool_call_validated') {
+          validatedCalls.set(event.step, { input: event.input, tool: event.toolName });
+        }
+        if (event.type === 'tool_started') {
+          const validated = validatedCalls.get(event.step);
+          if (validated !== undefined && validated.tool === event.toolName) {
+            activeCall = { ...validated, step: event.step };
+          }
+        }
         if (!interrupted && event.type === 'tool_call_validated' && fixture.interrupt !== undefined) {
           interrupted = true;
           fixture.interrupt(store);
@@ -105,11 +149,13 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
   }
 
   const completedAt = (options.now ?? (() => new Date()))();
-  const calls = collectCalls(runtimeResult?.history ?? [], runtimeResult?.events ?? observedEvents);
+  const history = runtimeResult?.history ?? observedHistory;
+  const calls = collectCalls(history, runtimeResult?.events ?? observedEvents);
   if (failure === undefined && runtimeResult !== undefined) {
     failure = failureFromRuntimeHistory(runtimeResult.history);
   }
   const assertions = evaluateAssertions(options.task, runtimeResult, calls, toolsByName);
+  if (failure === undefined) failure = failureFromAssertions(assertions);
   const outcome = runtimeResult?.status ?? 'runtime_error';
   const result: BenchmarkResult = {
     assertions,
@@ -203,7 +249,9 @@ function collectCalls(
     return [{
       input: event.input,
       ...(executed?.ok && executed.output !== undefined ? { output: executed.output } : {}),
+      ...(executed?.ok === false && executed.error !== undefined ? { error: executed.error } : {}),
       step: event.step,
+      status: executed === undefined ? 'validated' : executed.ok ? 'succeeded' : 'failed',
       tool: event.toolName,
     }];
   });
@@ -211,9 +259,11 @@ function collectCalls(
 
 function toToolCallRecord(call: RunnerCall): BenchmarkToolCallRecord {
   return {
+    ...(call.error === undefined ? {} : { error: call.error }),
     inputJson: JSON.stringify(call.input),
     ...(call.output === undefined ? {} : { outputJson: JSON.stringify(call.output) }),
     step: call.step,
+    status: call.status,
     toolName: call.tool,
   };
 }
@@ -246,7 +296,11 @@ function evaluateAssertions(
     assertions.push(assertion(`forbidden-tool:${tool}`, 'not called', toolNames.includes(tool) ? 'called' : 'not called', !toolNames.includes(tool)));
   }
   assertions.push(approvalAssertion(task, runtimeResult));
-  const completedWrites = calls.filter((call) => call.output !== undefined && !toolsByName.get(call.tool)?.annotations.readOnlyHint);
+  const completedWrites = calls.filter((call) => (
+    call.status === 'succeeded'
+    && call.output !== undefined
+    && !toolsByName.get(call.tool)?.annotations.readOnlyHint
+  ));
   assertions.push(assertion(
     'state-effect',
     task.expected.stateEffect,
@@ -274,13 +328,19 @@ function identifierReuseAssertion(
   expectation: IdentifierReuseExpectation,
   calls: readonly RunnerCall[],
 ): BenchmarkAssertion {
-  const exposed = calls
-    .filter((call) => call.tool === expectation.sourceTool && call.output !== undefined)
-    .flatMap((call) => valuesAtSourcePath(call.output, expectation.sourceOutputPath));
-  const consumed = calls
-    .filter((call) => call.tool === expectation.consumerTool)
-    .flatMap((call) => valueAtConsumerPath(call.input, expectation.consumerInputPath));
-  const passed = exposed.some((value) => consumed.includes(value));
+  const passed = calls
+    .filter((consumer) => consumer.tool === expectation.consumerTool)
+    .some((consumer) => {
+      const consumed = valueAtConsumerPath(consumer.input, expectation.consumerInputPath);
+      return calls
+        .filter((source) => (
+          source.tool === expectation.sourceTool
+          && source.step < consumer.step
+          && source.output !== undefined
+        ))
+        .flatMap((source) => valuesAtSourcePath(source.output, expectation.sourceOutputPath))
+        .some((value) => consumed.includes(value));
+    });
   return assertion(
     `identifier-reuse:${expectation.sourceTool}->${expectation.consumerTool}`,
     `${expectation.sourceOutputPath} reused by ${expectation.consumerInputPath}`,
@@ -339,11 +399,61 @@ function normalizeFailure(
   return benchmarkFailure(code, error instanceof Error ? error.message : String(error));
 }
 
+function configurationResult(
+  options: BenchmarkRunnerOptions,
+  startedAt: Date,
+  error: unknown,
+): BenchmarkResult {
+  const code: BenchmarkFailureCode = error instanceof Error && error.message.startsWith('Unknown benchmark fixture')
+    ? 'missing_fixture'
+    : 'invalid_task';
+  return {
+    assertions: [],
+    completedAt: startedAt.toISOString(),
+    failure: benchmarkFailure(code, error instanceof Error ? error.message : String(error)),
+    fixture: options.task.fixture,
+    metrics: {
+      decisionCount: 0,
+      endToEndLatencyMs: 0,
+      identifierReuseRate: 1,
+      schemaValidRate: 1,
+    },
+    model: options.modelDescriptor,
+    outcome: 'runtime_error',
+    startedAt: startedAt.toISOString(),
+    taskId: options.task.id,
+    toolCalls: [],
+    version: BENCHMARK_SCHEMA_VERSION,
+  };
+}
+
 function failureFromRuntimeHistory(history: readonly AgentToolResult[]): BenchmarkFailure | undefined {
   const failed = [...history].reverse().find((entry) => !entry.ok);
   return failed === undefined
     ? undefined
     : benchmarkFailure('execution_failed', failed.error ?? 'Tool execution failed.');
+}
+
+function failureFromAssertions(assertions: readonly BenchmarkAssertion[]): BenchmarkFailure | undefined {
+  const failed = assertions.filter((assertion) => !assertion.passed);
+  const named = (prefix: string): BenchmarkAssertion | undefined => failed.find(({ name }) => name.startsWith(prefix));
+  const forbidden = named('forbidden-tool:');
+  if (forbidden !== undefined) return benchmarkFailure('forbidden_capability', `${forbidden.name}: ${forbidden.actual}`);
+  const approval = named('approval');
+  if (approval !== undefined) {
+    const code = approval.expected === 'denied' ? 'denial_mishandled' : 'approval_missing';
+    return benchmarkFailure(code, `${approval.name}: expected ${approval.expected}, received ${approval.actual}`);
+  }
+  const reuse = named('identifier-reuse:');
+  if (reuse !== undefined) return benchmarkFailure('identifier_reuse_failed', `${reuse.name}: ${reuse.actual}`);
+  const required = named('required-tool:');
+  if (required !== undefined) return benchmarkFailure('missing_read', `${required.name}: ${required.actual}`);
+  const bounds = named('tool-call-bounds');
+  if (bounds !== undefined) return benchmarkFailure('step_accounting_invalid', `${bounds.name}: ${bounds.actual}`);
+  const state = named('state-effect');
+  if (state !== undefined) return benchmarkFailure('revision_mismatch', `${state.name}: ${state.actual}`);
+  const outcome = named('outcome');
+  return outcome === undefined ? undefined : benchmarkFailure('invalid_decision', `${outcome.name}: ${outcome.actual}`);
 }
 
 function benchmarkFailure(code: BenchmarkFailureCode, message: string): BenchmarkFailure {
@@ -370,7 +480,9 @@ function failureCode(
     }
     if (error.code === 'invalid_tool_input' || error.code === 'resource_limit') return 'invalid_decision';
     if (error.code === 'invalid_tool' || error.code === 'tool_changed') return 'tool_refresh_missing';
-    if (error.code === 'tool_unavailable') return 'tool_unavailable';
+    if (error.code === 'tool_unavailable') {
+      return error.message.startsWith('Model requested an unavailable tool') ? 'wrong_tool' : 'tool_unavailable';
+    }
     if (error.code === 'cancelled') return 'generation_cancelled';
   }
   if (generationFailed) return 'transport_failed';

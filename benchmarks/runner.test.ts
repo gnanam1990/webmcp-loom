@@ -89,6 +89,25 @@ describe('deterministic benchmark runner', () => {
     expect(result.assertions.find(({ name }) => name === 'outcome')).toMatchObject({ passed: false });
   });
 
+  it('normalizes invalid tasks and missing fixtures into result records', async () => {
+    const base = task('smoke-read-constraints');
+    const invalid = {
+      ...base,
+      id: 'invalid-id',
+    } as BenchmarkTask;
+    const missingFixture = {
+      ...base,
+      fixture: 'missing_fixture',
+    } as unknown as BenchmarkTask;
+
+    await expect(runBenchmarkTask({
+      model: createScriptedModel([]), modelDescriptor: MODEL, now: clock(), task: invalid,
+    })).resolves.toMatchObject({ failure: { code: 'invalid_task' }, outcome: 'runtime_error', toolCalls: [] });
+    await expect(runBenchmarkTask({
+      model: createScriptedModel([]), modelDescriptor: MODEL, now: clock(), task: missingFixture,
+    })).resolves.toMatchObject({ failure: { code: 'missing_fixture' }, outcome: 'runtime_error', toolCalls: [] });
+  });
+
   it('keeps unsupported decisions distinct from generic invalid decisions', async () => {
     const result = await runBenchmarkTask({
       model: { generate: async () => JSON.stringify({ type: 'invented' }) },
@@ -127,6 +146,33 @@ describe('deterministic benchmark runner', () => {
       code: 'transport_failed', category: 'adapter', retryable: true,
     });
     expect(result.metrics).toMatchObject({ decisionCount: 0, schemaValidRate: 1 });
+  });
+
+  it('retains a successful write trace when a later model call throws', async () => {
+    let decision = 0;
+    const result = await runBenchmarkTask({
+      approve: () => true,
+      model: {
+        generate: async () => {
+          decision += 1;
+          if (decision > 1) throw new Error('adapter disconnected after write');
+          return JSON.stringify({
+            type: 'tool_call', tool: 'add_itinerary_item', input: {
+              expectedRevision: 1, kind: 'stay', refId: 'st-kyo-mid', date: '2026-11-10', nights: 3,
+            },
+          });
+        },
+      },
+      modelDescriptor: MODEL,
+      now: clock(),
+      task: task('smoke-select-kyoto-stay'),
+    });
+
+    expect(result.failure).toMatchObject({ code: 'transport_failed', category: 'adapter' });
+    expect(result.toolCalls).toEqual([expect.objectContaining({
+      status: 'succeeded', toolName: 'add_itinerary_item',
+    })]);
+    expect(result.assertions.find(({ name }) => name === 'state-effect')).toMatchObject({ actual: 'changed' });
   });
 
   it('interrupts stale fixtures after the first validated model decision', async () => {
@@ -211,7 +257,9 @@ describe('deterministic benchmark runner', () => {
       outcome: 'write_failed',
       failure: { code: 'execution_failed', category: 'tool', retryable: false },
     });
-    expect(result.toolCalls).toEqual([expect.objectContaining({ toolName: 'add_itinerary_item', step: 1 })]);
+    expect(result.toolCalls).toEqual([expect.objectContaining({
+      error: expect.any(String), status: 'failed', toolName: 'add_itinerary_item', step: 1,
+    })]);
   });
 
   it('retains validated calls when an approval boundary itself throws', async () => {
@@ -237,5 +285,65 @@ describe('deterministic benchmark runner', () => {
       failure: { code: 'approval_failed', category: 'approval', retryable: true },
     });
     expect(result.toolCalls).toEqual([expect.objectContaining({ toolName: 'add_itinerary_item', step: 1 })]);
+  });
+
+  it('requires an identifier source call to precede its consumer', async () => {
+    const base = task('smoke-select-kyoto-stay');
+    const outOfOrder: BenchmarkTask = {
+      ...base,
+      expected: {
+        ...base.expected,
+        allowedStatuses: ['completed'],
+        approval: 'none',
+        stateEffect: 'changed',
+        toolCalls: {
+          min: 2,
+          max: 2,
+          requiredToolNames: ['add_itinerary_item', 'search_stays'],
+          forbiddenToolNames: [],
+        },
+      },
+    };
+    const result = await runBenchmarkTask({
+      approve: () => true,
+      model: createScriptedModel([
+        {
+          tool: 'add_itinerary_item',
+          input: {
+            expectedRevision: '$revision', kind: 'stay', refId: 'st-kyo-mid', date: '2026-11-10', nights: 3,
+          },
+        },
+        { tool: 'search_stays', input: { cityId: 'kyoto' } },
+        { tool: null, message: 'Finished.' },
+      ]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      task: outOfOrder,
+    });
+
+    expect(result.failure).toMatchObject({ code: 'identifier_reuse_failed', category: 'retrieval' });
+    expect(result.assertions.find(({ name }) => name.startsWith('identifier-reuse:'))).toMatchObject({ passed: false });
+  });
+
+  it('classifies an unadvertised model tool as retrieval failure', async () => {
+    const result = await runBenchmarkTask({
+      model: { generate: async () => JSON.stringify({ type: 'tool_call', tool: 'book_trip', input: {} }) },
+      modelDescriptor: MODEL,
+      now: clock(),
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result.failure).toMatchObject({ code: 'wrong_tool', category: 'retrieval' });
+  });
+
+  it('classifies a terminal result that misses required reads', async () => {
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([{ tool: null, message: 'Finished without reading.' }]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result).toMatchObject({ outcome: 'completed', failure: { code: 'missing_read', category: 'retrieval' } });
   });
 });
