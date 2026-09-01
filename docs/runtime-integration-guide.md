@@ -27,8 +27,8 @@ function assertStageInput(input: unknown): asserts input is {
   const value = input as Record<string, unknown>;
   if (!Number.isInteger(value.expectedRevision) || value.expectedRevision < 1
     || typeof value.title !== 'string'
-    || value.title.length < 1
-    || value.title.length > 80) {
+    || Array.from(value.title).length < 1
+    || Array.from(value.title).length > 80) {
     throw new Error('Tool input does not match its schema.');
   }
 }
