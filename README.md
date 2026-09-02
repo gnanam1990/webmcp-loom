@@ -10,6 +10,11 @@ The runtime and collaborative travel foundations are merged: bounded multi-step 
 
 The travel application now creates one canonical tool array for both its in-app runtime and document WebMCP registration. External WebMCP writes update the same subscribed store the visible board reads, so the two entry points cannot drift onto separate state.
 
+An explicit browser-local probe can now load a registered WebLLM artifact
+through WebGPU without changing the shared runtime, policy or tool surface. It
+is opt-in rather than an unmeasured default; successful loading does not by
+itself select a showcase model.
+
 The earlier [Latchwork runtime foundation](https://github.com/gnanam1990/latchwork/pull/7) remains source evidence; WebMCP Loom's implementation is independently structured and revalidated here.
 
 ## Team ownership

@@ -65,7 +65,7 @@ export interface BackendDescriptor {
  */
 export type BackendState =
   | { status: 'failed'; backend: BackendDescriptor; error: string }
-  | { status: 'loading'; backend: BackendDescriptor }
+  | { status: 'loading'; backend: BackendDescriptor; progress?: number }
   | { status: 'ready'; backend: BackendDescriptor };
 
 export const SCRIPTED_BACKEND: BackendDescriptor = Object.freeze({
@@ -120,6 +120,8 @@ export interface Session {
   approve(): void;
   deny(): void;
   cancel(): void;
+  /** Replaces only the model provider; store, tools and policy remain canonical. */
+  configureBackend(backend: BackendState, createModel?: SessionModelFactory): void;
   /** A human edit from the board. Applies unconditionally and moves the revision. */
   removeItem(itemId: string): void;
   /** A keyboard- or pointer-originated board edit with the same authority. */
@@ -251,8 +253,8 @@ function sameItem(left: ItineraryItem, right: ItineraryItem): boolean {
 export function createSession(
   store: TripStore = createTripStore(),
   tools: readonly RuntimeTool[] = createTravelTools(store),
-  backend: BackendState = { status: 'ready', backend: SCRIPTED_BACKEND },
-  createModel: SessionModelFactory = (trip) => createScriptedModel(scriptFor(trip)),
+  initialBackend: BackendState = { status: 'ready', backend: SCRIPTED_BACKEND },
+  initialCreateModel: SessionModelFactory = (trip) => createScriptedModel(scriptFor(trip)),
 ): Session {
   const listeners = new Set<() => void>();
 
@@ -262,6 +264,8 @@ export function createSession(
   let pending: { request: AgentApprovalRequest; settle: (approved: boolean) => void } | null = null;
   let controller: AbortController | null = null;
   let currentStep = 0;
+  let backend = initialBackend;
+  let createModel = initialCreateModel;
 
   let previousItems: readonly ItineraryItem[] = store.getState().items;
   let previousBudget = store.getBudgetSummary();
@@ -505,6 +509,16 @@ export function createSession(
       // Settle the held approval promise as well as aborting the runtime race,
       // so cancellation cannot leave the original promise and abort listener alive.
       pending?.settle(false);
+    },
+
+    configureBackend: (nextBackend, nextCreateModel) => {
+      if (status === 'running' || status === 'awaiting_approval') {
+        throw new Error('Cannot replace the model backend while the agent is working.');
+      }
+      backend = nextBackend;
+      if (nextCreateModel !== undefined) createModel = nextCreateModel;
+      note = null;
+      emit();
     },
 
     removeItem: (itemId: string) => {

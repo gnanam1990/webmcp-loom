@@ -45,6 +45,34 @@ describe('createWebLlmRuntimeModel', () => {
     }));
   });
 
+  it('removes only an empty Qwen thinking transport prefix', async () => {
+    const complete = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: '<think>\n\n</think>\n\n{"type":"final","message":"done"}' } }],
+    });
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const model = await createWebLlmRuntimeModel({ model: 'fixture' });
+
+    await expect(model.generate(request('empty thinking wrapper')))
+      .resolves.toBe('{"type":"final","message":"done"}');
+  });
+
+  it('does not hide non-empty reasoning or other malformed framing', async () => {
+    const framed = '<think>hidden reasoning</think>\n{"type":"final","message":"done"}';
+    const complete = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: framed } }],
+    });
+    createEngine.mockResolvedValueOnce({
+      chat: { completions: { create: complete } },
+    });
+    vi.stubGlobal('navigator', { gpu: {} });
+    const model = await createWebLlmRuntimeModel({ model: 'fixture' });
+
+    await expect(model.generate(request('non-empty thinking wrapper'))).resolves.toBe(framed);
+  });
+
   it('fails clearly when the browser lacks WebGPU', async () => {
     vi.stubGlobal('navigator', {});
     await expect(createWebLlmRuntimeModel({ model: 'fixture' }))
