@@ -9,13 +9,14 @@ import {
   createTravelToolSelector,
   TRAVEL_RETRIEVAL_PROFILE,
 } from '../apps/travel-showcase/src/retrieval.ts';
+import { checkedOutSourceRevision } from './source-revision.mjs';
 
 const model = required('WEBMCP_OLLAMA_MODEL');
 const attemptsPerTask = integerEnv('WEBMCP_BENCHMARK_ATTEMPTS', 3);
 const tasks = selectedTasks(process.env.WEBMCP_BENCHMARK_TASK_IDS);
 const hardware = jsonEnv('WEBMCP_BENCHMARK_HARDWARE_JSON');
 const memory = jsonEnv('WEBMCP_BENCHMARK_MEMORY_JSON');
-const sourceRevision = required('WEBMCP_BENCHMARK_SOURCE_REVISION');
+const sourceRevision = checkedOutSourceRevision();
 
 const report = await runLocalOllamaBenchmark({
   attemptsPerTask,

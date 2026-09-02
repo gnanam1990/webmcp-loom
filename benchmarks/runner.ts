@@ -139,7 +139,9 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
       getStateRevision: () => store.getState().revision,
       maxSteps: options.task.expected.toolCalls.max + 1,
       maxToolCalls: options.task.expected.toolCalls.max,
-      ...(options.retrieval === undefined ? {} : { toolSelector: options.retrieval.toolSelector }),
+      ...(options.retrieval === undefined
+        ? {}
+        : { toolSelector: boundedToolSelector(options.retrieval) }),
       ...(approval.callback === undefined ? {} : { approve: approval.callback }),
       onEvent: (event) => {
         observedEvents.push(event);
@@ -191,6 +193,11 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
     version: BENCHMARK_SCHEMA_VERSION,
   };
   return result;
+}
+
+/** Keeps the selector's effective prompt surface within its recorded cap. */
+function boundedToolSelector(retrieval: BenchmarkRetrievalConfiguration): RuntimeToolSelector {
+  return (context) => retrieval.toolSelector(context).slice(0, retrieval.profile.maxTools);
 }
 
 function observeModel(source: RuntimeModel): ObservedModel {

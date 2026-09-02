@@ -95,6 +95,30 @@ describe('deterministic benchmark runner', () => {
     });
   });
 
+  it('bounds an oversized selector result to the recorded profile cap', async () => {
+    let advertisedToolCount = 0;
+    const result = await runBenchmarkTask({
+      model: {
+        generate: async ({ responseSchema }) => {
+          const choices = responseSchema.oneOf;
+          if (!Array.isArray(choices)) throw new Error('Expected the runtime decision choices.');
+          advertisedToolCount = choices.length - 1;
+          return JSON.stringify({ type: 'final', message: 'No changes requested.' });
+        },
+      },
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: { ...RETRIEVAL_PROFILE, maxTools: 2 },
+        toolSelector: ({ tools }) => tools.map(({ name }) => name),
+      },
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(advertisedToolCount).toBe(2);
+    expect(result.retrievalProfile?.maxTools).toBe(2);
+  });
+
   it('counts the pending approved write and verifies search identifier reuse', async () => {
     const result = await resultFor('smoke-select-kyoto-stay', [
       { tool: 'search_stays', input: { cityId: 'kyoto', maxPricePerNightInr: 6_000 } },
