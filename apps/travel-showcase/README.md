@@ -13,6 +13,7 @@ The deterministic Japan travel domain, collaborative application, shared state, 
 - one application factory that hands the same store and tool array to the in-app runtime and document WebMCP registration;
 - undo, a visible execution-backend indicator, and application-native highlights;
 - an opt-in WebGPU/WebLLM backend loader with visible progress, clear failure and retry states;
+- a versioned deterministic retrieval profile that limits each model prompt to at most four relevant tools;
 - deterministic domain, collaboration, accessibility-helper and WebMCP integration tests.
 
 ## Shared state and revisions
@@ -65,6 +66,20 @@ Seven read tools, three write tools.
 | `move_itinerary_item` | no | Move a staged item to another date |
 
 Write tools carry `readOnlyHint: false`, so the runtime pauses each one for visible human approval.
+
+## Deterministic retrieval
+
+`travel-deterministic-v1` ranks the current goal and successful history against
+the canonical ten-tool surface. Initial move/remove goals expose the itinerary
+read before their writes; search-backed staging stays hidden until a returned
+catalogue id and revision exist; and explicit read-only goals never advertise
+a write. The profile then caps the model-visible surface at four tools.
+
+This changes prompt size, not authority. All ten tools remain in the page-owned
+registry, the runtime refreshes that registry before execution, and canonical
+schema, approval and stale-state checks still apply. The profile id is exported
+so a future retrieval-assisted benchmark can bind the exact configuration to
+its report. Existing committed local-model evidence did not use this profile.
 
 Schemas stay inside the runtime's bounded JSON Schema subset. A test asserts this, because a keyword the runtime does not support fails closed at registration rather than degrading quietly.
 

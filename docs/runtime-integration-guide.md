@@ -123,6 +123,41 @@ run without approval. The runtime treats WebMCP tools as write-capable unless
 their origin appears in `trustedReadOnlyOrigins` and that implementation is
 under the page owner's control.
 
+### Optional deterministic retrieval
+
+Large tool surfaces can be narrowed for each model decision without narrowing
+the execution registry. `toolSelector` receives the current goal, bounded tool
+history, state revision, step and freshly discovered tools. It returns names
+for the prompt and its generated response schema only:
+
+```ts
+import { createDeterministicToolSelector } from '@webmcp-loom/model-adapters/retrieval';
+
+const toolSelector = createDeterministicToolSelector({
+  maxTools: 4,
+  synonymGroups: [['board', 'items'], ['stage', 'add']],
+});
+
+await runAgentRuntime({
+  goal,
+  model,
+  toolProvider,
+  toolSelector,
+  approve: showVisibleApproval,
+});
+```
+
+The built-in selector is deterministic lexical ranking. A reference-bearing
+write is withheld until a successful earlier result contains both the required
+identifier and revision evidence. The page may layer stable domain priorities
+over that ranking, as the travel showcase does in `travel-deterministic-v1`.
+
+Retrieval is not authorization. Immediately before execution, the runtime
+rediscovers the full canonical registry, rejects disappeared or changed tools,
+validates the model input against the canonical schema, checks state, and
+requests approval for writes. A selector must never be used as the only reason
+a tool is considered safe.
+
 ## 4. Render runtime outcomes explicitly
 
 Render `approval_required`, `denied`, `write_failed`, `stale_state`,

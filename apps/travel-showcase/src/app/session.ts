@@ -17,6 +17,7 @@ import { readNumber, readString } from '../input.js';
 import { ACTIVITIES, DESTINATIONS, FLIGHTS, STAYS } from '../inventory.js';
 import { createTripStore } from '../state.js';
 import { createTravelTools } from '../tools.js';
+import { createTravelToolSelector } from '../retrieval.js';
 import { HERO_SCRIPT, REPAIR_SCRIPT, createScriptedModel } from './scripted-model.js';
 import type {
   AgentApprovalRequest,
@@ -143,6 +144,7 @@ export interface Session {
 export type SessionModelFactory = (trip: TripState) => RuntimeModel;
 
 export const MAX_AGENT_STEPS = 6;
+const selectTravelTools = createTravelToolSelector();
 
 function cityName(cityId: unknown): string {
   const found = DESTINATIONS.find((entry) => entry.id === cityId);
@@ -448,6 +450,7 @@ export function createSession(
           getStateRevision: () => store.getState().revision,
           signal: controller.signal,
           maxSteps: MAX_AGENT_STEPS,
+          ...(backend.backend.kind === 'scripted' ? {} : { toolSelector: selectTravelTools }),
           onEvent,
           approve: (request) => new Promise<boolean>((resolve) => {
             pending = {

@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "paths": {
+      "@webmcp-loom/model-adapters/retrieval": [
+        "../../packages/model-adapters/src/retrieval.ts"
+      ],
       "@webmcp-loom/model-adapters": [
         "../../packages/model-adapters/src/index.ts"
       ],

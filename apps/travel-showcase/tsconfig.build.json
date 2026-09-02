@@ -22,6 +22,9 @@
   "references": [
     {
       "path": "../../packages/runtime/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/model-adapters/tsconfig.build.json"
     }
   ]
 }

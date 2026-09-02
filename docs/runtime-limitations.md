@@ -33,6 +33,15 @@ bounded JSON Schema subset. Unsupported schema features fail closed. It bounds
 goal, tool surface, model decision, input, result, error, revision, and step
 sizes. It does not retry ambiguous write failures.
 
+## Retrieval boundary
+
+The deterministic selector narrows only the tools and response schema shown to
+the model. It is lexical and workflow-aware, not semantic proof that a tool can
+satisfy the goal. It cannot grant authority, skip canonical validation, or make
+untrusted tool output into instructions. A write that requires a returned id
+or revision remains hidden until successful prior history supplies that
+evidence, but the executor still owns the final domain check.
+
 ## Product boundary
 
 The reference fixtures stage reversible local state only. They do not expose
@@ -46,3 +55,8 @@ approval; none follows merely from a passing fixture.
 A green local test or CI run proves only the exercised environment and current
 head. Browser visual checks, exact-head review, and a separate deployment
 approval remain required for a release.
+
+The committed Qwen3 0.6B result predates `travel-deterministic-v1` and therefore
+does not measure it. A retrieval-assisted model claim needs a new complete run
+that records the profile id, exact source revision, model artifact and all
+existing correctness, safety, latency and memory evidence.

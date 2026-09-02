@@ -37,6 +37,16 @@ describe('collaboration session', () => {
     expect(snapshot.budget.overBudget).toBe(false);
   });
 
+  it('keeps the fixed scripted plan independent from goal-based model retrieval', async () => {
+    const session = createSession();
+    await runApprovingAll(session, 'Look at what is planned.');
+
+    expect(session.getSnapshot()).toMatchObject({
+      status: 'completed',
+      trip: { revision: 3 },
+    });
+  });
+
   it('publishes an accepted in-app write together with its succeeded trace state', async () => {
     const session = createSession();
     const observed = [] as ReturnType<Session['getSnapshot']>[];
