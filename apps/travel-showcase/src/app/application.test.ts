@@ -46,6 +46,28 @@ function createFakeWebMcp(): FakeWebMcp {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('travel application WebMCP integration', () => {
+  it('uses an injected ready backend through the same session runtime', async () => {
+    const createModel = vi.fn(() => ({
+      generate: async () => JSON.stringify({ type: 'final', message: 'Local model completed.' }),
+    }));
+    const application = createTravelApplication(undefined, {
+      backend: {
+        status: 'ready',
+        backend: { id: 'local-test', kind: 'local', label: 'Local test', detail: 'Test-only local adapter.' },
+      },
+      createModel,
+    });
+
+    await application.session.run('Check the local model seam.');
+
+    expect(createModel).toHaveBeenCalledOnce();
+    expect(application.session.getSnapshot()).toMatchObject({
+      backend: { status: 'ready', backend: { id: 'local-test', kind: 'local' } },
+      note: 'Local model completed.',
+      status: 'completed',
+    });
+  });
+
   it('registers the canonical tools and reflects an external write in the UI session', async () => {
     const webmcp = createFakeWebMcp();
     vi.stubGlobal('document', { modelContext: webmcp.context });
