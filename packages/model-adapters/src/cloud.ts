@@ -8,6 +8,24 @@ const MAX_CREDENTIAL_HEADERS = 32;
 const MAX_CREDENTIAL_HEADER_NAME_CHARACTERS = 128;
 const MAX_CREDENTIAL_HEADER_VALUE_CHARACTERS = 8_192;
 const MAX_CREDENTIAL_HEADERS_CHARACTERS = 32_768;
+const SENSITIVE_QUERY_WORDS = new Set([
+  'api-key',
+  'apikey',
+  'access-key',
+  'accesskey',
+  'auth',
+  'authorization',
+  'credential',
+  'key',
+  'password',
+  'private-key',
+  'privatekey',
+  'secret',
+  'secret-key',
+  'secretkey',
+  'signature',
+  'token',
+]);
 const FORBIDDEN_CREDENTIAL_HEADERS = new Set([
   'accept',
   'connection',
@@ -15,6 +33,7 @@ const FORBIDDEN_CREDENTIAL_HEADERS = new Set([
   'content-type',
   'cookie',
   'host',
+  'keep-alive',
   'proxy-authenticate',
   'proxy-authorization',
   'set-cookie',
@@ -121,6 +140,7 @@ export function createOpenAiCompatibleCloudRuntimeModel(
             method: 'POST',
             signal: operation.signal,
             redirect: 'error',
+            credentials: 'omit',
             headers,
             body: JSON.stringify({
               model,
@@ -147,7 +167,10 @@ export function createOpenAiCompatibleCloudRuntimeModel(
           );
         }
 
-        if (!response.ok) throw httpError(response.status);
+        if (!response.ok) {
+          if (response.body !== null) void response.body.cancel().catch(() => undefined);
+          throw httpError(response.status);
+        }
 
         let payload: ChatCompletionResponse;
         try {
@@ -159,6 +182,9 @@ export function createOpenAiCompatibleCloudRuntimeModel(
             operation,
             'Cloud model returned invalid JSON.',
           );
+        }
+        if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+          throw new CloudAdapterResponseError('Cloud model returned an invalid response shape.');
         }
         const content = payload.choices?.[0]?.message?.content;
         if (typeof content !== 'string' || !content.trim()) {
@@ -284,14 +310,16 @@ function validateEndpoint(value: string): string {
 }
 
 function isSensitiveQueryName(value: string): boolean {
-  const normalized = value.replace(/[^a-z0-9]/gi, '').toLowerCase();
-  return /^(?:(?:api|access|private|secret)?key)$/.test(normalized)
-    || normalized.includes('auth')
-    || normalized.includes('credential')
-    || normalized.includes('password')
-    || normalized.includes('secret')
-    || normalized.includes('signature')
-    || normalized.includes('token');
+  const words = value
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+  return words.some((word) => SENSITIVE_QUERY_WORDS.has(word))
+    || words.some((word, index) => {
+      const next = words[index + 1];
+      return next !== undefined && SENSITIVE_QUERY_WORDS.has(`${word}-${next}`);
+    });
 }
 
 function buildHeaders(values: Readonly<Record<string, string>>): Record<string, string> {

@@ -35,6 +35,7 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
     expect(init).toMatchObject({
       method: 'POST',
       redirect: 'error',
+      credentials: 'omit',
       headers: {
         authorization: 'Bearer fixture-token',
         accept: 'application/json',
@@ -89,6 +90,8 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
     ['credential query', 'https://models.example.test/v1/chat/completions?api_key=fixture', 'credential query parameters'],
     ['camel-case token query', 'https://models.example.test/v1/chat/completions?authToken=fixture', 'credential query parameters'],
     ['generic key query', 'https://models.example.test/v1/chat/completions?key=fixture', 'credential query parameters'],
+    ['prefixed API key query', 'https://models.example.test/v1/chat/completions?my_api_key=fixture', 'credential query parameters'],
+    ['consumer API key query', 'https://models.example.test/v1/chat/completions?consumer_apikey=fixture', 'credential query parameters'],
   ])('rejects a %s endpoint before a request is possible', (_label, endpoint, message) => {
     expect(() => createOpenAiCompatibleCloudRuntimeModel({
       endpoint,
@@ -97,6 +100,18 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
       resolveCredentialHeaders: () => ({}),
     })).toThrow(message);
   });
+
+  it.each(['tokenizer', 'secretary', 'oauth', 'api-version'])(
+    'does not misclassify the non-credential query name %s',
+    (name) => {
+      expect(() => createOpenAiCompatibleCloudRuntimeModel({
+        endpoint: `https://models.example.test/v1/chat/completions?${name}=fixture`,
+        fetch: vi.fn(),
+        model: 'fixture',
+        resolveCredentialHeaders: () => ({}),
+      })).not.toThrow();
+    },
+  );
 
   it('rejects invalid timeout and model configuration before resolving credentials', () => {
     expect(() => createOpenAiCompatibleCloudRuntimeModel({
@@ -138,6 +153,7 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
     ['invalid value', { Authorization: 'Bearer fixture\r\nX-Injected: yes' }, 'invalid header value'],
     ['invalid name', { 'bad header': 'fixture' }, 'invalid header name'],
     ['hop-by-hop host', { Host: 'attacker.example.test' }, 'must not override host'],
+    ['hop-by-hop keep-alive', { 'Keep-Alive': 'timeout=5' }, 'must not override keep-alive'],
     ['case-folded duplicate', { Authorization: 'first', authorization: 'second' }, 'duplicate header names'],
     ['oversized value', { Authorization: `Bearer ${'x'.repeat(8_193)}` }, 'invalid header value'],
   ])('fails closed for %s credential headers', async (_label, headers, message) => {
@@ -230,10 +246,12 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
     [500, 'returned HTTP 500'],
   ])('normalizes HTTP %i without reading a provider error body', async (status, message) => {
     const response = new Response('provider-secret-detail', { status });
-    const bodyReader = vi.spyOn(response, 'json');
+    const bodyCancel = vi.spyOn(response.body!, 'cancel');
+    const bodyReader = vi.spyOn(response.body!, 'getReader');
     const model = cloudModel(async () => response);
 
     await expect(model.generate(runtimeRequest())).rejects.toThrow(message);
+    expect(bodyCancel).toHaveBeenCalledOnce();
     expect(bodyReader).not.toHaveBeenCalled();
   });
 
@@ -247,6 +265,9 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
 
     await expect(cloudModel(async () => completionResponse('   '))
       .generate(runtimeRequest())).rejects.toThrow('Cloud model returned no assistant message content.');
+
+    await expect(cloudModel(async () => new Response('null', { status: 200 }))
+      .generate(runtimeRequest())).rejects.toThrow('Cloud model returned an invalid response shape.');
   });
 
   it('bounds the remote response and extracted decision sizes', async () => {
