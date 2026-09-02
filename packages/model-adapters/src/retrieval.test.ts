@@ -94,6 +94,18 @@ describe('deterministic tool retrieval', () => {
     expect(selected).not.toContain('add_itinerary_item');
   });
 
+  it('preserves an affirmative mutation whose negative clause protects everything else', () => {
+    const selected = createDeterministicToolSelector({ maxTools: 4 })({
+      goal: 'Remove the existing itinerary item without changing anything else.',
+      history: history({ revision: 3, items: [{ id: 'item-1' }] }, 'get_itinerary'),
+      stateRevision: 3,
+      step: 2,
+      tools,
+    });
+
+    expect(selected).toContain('remove_itinerary_item');
+  });
+
   it('is stable across ties and validates its configured cap', () => {
     expect(rankRuntimeTools({
       goal: 'Unrelated request.',

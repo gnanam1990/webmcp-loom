@@ -64,7 +64,10 @@ describe('travel retrieval profile', () => {
 
   it('retrieves the itinerary before exposing a move that needs its item id', () => {
     const selector = createTravelToolSelector();
-    const moveGoal = { ...context(), goal: 'Move the staged Tokyo stay one day later.' };
+    const moveGoal = {
+      ...context(),
+      goal: 'Move the staged Tokyo stay one day later without changing anything else.',
+    };
     const initial = selector(moveGoal);
     const afterRead = selector({
       ...moveGoal,

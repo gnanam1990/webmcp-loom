@@ -17,6 +17,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const READ_ONLY_INTENT = /(?:\bread[ -]?only\b|\b(?:do not|don['’]?t|dont|never)\s+(?:(?:apply|make)\s+)?(?:any\s+)?(?:change|changes|edit|edits|write|writes)\b|\b(?:do not|don['’]?t|dont|never)\s+stage\s+(?:anything|it|that|them|this|the\s+(?:item|option|result))\b|\bwithout\s+(?:changing|editing|writing(?:\s+to)?)\s+(?:anything|it|the\s+(?:board|plan|state))\b)/i;
+const AFFIRMATIVE_WRITE_INTENT = /(?:^\s*(?:add|create|move|remove|stage|update)\b|\b(?:and|then)\s+(?:add|create|move|remove|stage|update)\b)/i;
 const REFERENCE_FIELD = /(?:^id$|(?:item|ref|source|target)[A-Z_ -]*id$)/i;
 const REVISION_FIELD = /revision/i;
 
@@ -75,7 +76,8 @@ function rankRuntimeToolsWithOptions(
   const historyEvidence = inspectHistory(context.history);
   const goalTokens = expandTokens(tokenize(context.goal), options.synonyms);
   const queryTokens = new Set([...goalTokens, ...historyEvidence.tokens]);
-  const readOnlyIntent = READ_ONLY_INTENT.test(context.goal);
+  const readOnlyIntent = READ_ONLY_INTENT.test(context.goal)
+    && !AFFIRMATIVE_WRITE_INTENT.test(context.goal);
 
   const ranked = context.tools.flatMap((tool, index) => {
     if (!isEligible(tool, historyEvidence, readOnlyIntent)) return [];
