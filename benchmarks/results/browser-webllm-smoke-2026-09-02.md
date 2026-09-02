@@ -77,6 +77,37 @@ no visible tool call, the itinerary stayed empty at revision 1, and committed
 spend stayed at ₹0. This attempt fails complete-task success and grounded state
 change. No write or approval transition occurred.
 
+## Independent browser candidate checks
+
+Two additional WebLLM artifacts were tested through the same built loader,
+runtime prompt, ten-tool WebMCP surface and Mac/browser environment. These are
+single smoke attempts, not corpus results.
+
+### `Qwen3.5-0.8B-q4f16_1-MLC`
+
+The model reached ready, with visible loading progress observed at 23%. For the
+constraints-only goal it emitted a final answer saying that the user needed to
+choose the next tool. It made no tool call. This fails the required first read
+and complete-task success, so the candidate did not advance to the hero goal.
+
+### `Qwen3.5-2B-q4f16_1-MLC`
+
+The larger model also reached ready. During the first observed load, progress
+was visible at 15%, 28%, 30%, 35%, 37%, 43%, 54% and 90%; the exact cold-cache
+state and elapsed time were not instrumented, so those checkpoints are UI
+evidence rather than a load-time benchmark.
+
+For the constraints-only goal the model chose `get_trip_constraints`, but it
+repeated the same successful read six times instead of using the returned result
+and finishing. The runtime stopped safely at its six-step limit, the itinerary
+remained unchanged, and no approval or write occurred. This candidate also did
+not advance to the hero goal.
+
+All three browser artifacts therefore fail a basic semantic gate for different
+reasons: wrong read plus unsupported final (`Qwen3-0.6B`), premature final with
+no tool (`Qwen3.5-0.8B`), and repeated read until the step bound
+(`Qwen3.5-2B`). A successful model load is not evidence of agent reliability.
+
 ## Gate verdict
 
 | Gate | Result | Evidence boundary |
