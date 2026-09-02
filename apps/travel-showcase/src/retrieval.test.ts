@@ -101,4 +101,24 @@ describe('travel retrieval profile', () => {
 
     expect(selected[0]).toBe('remove_itinerary_item');
   });
+
+  it.each([
+    ['Please delete the staged Tokyo stay without changing anything else.', 'remove_itinerary_item'],
+    ['I need you to drop the staged Tokyo stay without changing anything else.', 'remove_itinerary_item'],
+    ['Could you reschedule the staged Tokyo stay without changing anything else?', 'move_itinerary_item'],
+    ['Please shift the staged Tokyo stay without changing anything else.', 'move_itinerary_item'],
+  ])('keeps the travel synonym mutation retrievable for %s', (request, expected) => {
+    const selected = createTravelToolSelector()({
+      ...context([{
+        step: 1,
+        tool: 'get_itinerary',
+        input: {},
+        ok: true,
+        output: { revision: 4, items: [{ id: 'item-2', kind: 'stay' }] },
+      }]),
+      goal: request,
+    });
+
+    expect(selected[0]).toBe(expected);
+  });
 });

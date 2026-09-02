@@ -28,6 +28,7 @@ const tools = [
   tool('search_stays', 'Find hotel accommodation in one city.', true),
   tool('get_itinerary', 'Read staged trip items.', true),
   tool('add_itinerary_item', 'Stage a stay from a search result.', false, ['expectedRevision', 'refId']),
+  tool('move_itinerary_item', 'Move an existing itinerary item.', false, ['expectedRevision', 'itemId']),
   tool('remove_itinerary_item', 'Remove an existing itinerary item.', false, ['expectedRevision', 'itemId']),
 ] as const;
 
@@ -104,6 +105,48 @@ describe('deterministic tool retrieval', () => {
     });
 
     expect(selected).toContain('remove_itinerary_item');
+  });
+
+  it.each([
+    ['Please remove the item without changing anything else.', 'remove_itinerary_item'],
+    ['Please just remove the item without changing anything else.', 'remove_itinerary_item'],
+    ['Could you delete the item without changing anything else?', 'remove_itinerary_item'],
+    ['Would you please delete the item without changing anything else?', 'remove_itinerary_item'],
+    ['I need you to drop the item without changing anything else.', 'remove_itinerary_item'],
+    ['Please reschedule the item without changing anything else.', 'move_itinerary_item'],
+    ['Could you shift the item without changing anything else?', 'move_itinerary_item'],
+  ])('recognizes polite and synonym mutation clauses in %s', (goal, expected) => {
+    const selected = createDeterministicToolSelector({
+      maxTools: 4,
+      synonymGroups: [
+        ['move', 'reschedule', 'shift'],
+        ['remove', 'delete', 'drop'],
+      ],
+    })({
+      goal,
+      history: history({ revision: 3, items: [{ id: 'item-1' }] }, 'get_itinerary'),
+      stateRevision: 3,
+      step: 2,
+      tools,
+    });
+
+    expect(selected).toContain(expected);
+  });
+
+  it.each([
+    ['Update nothing; just read the itinerary without changing anything.'],
+    ['Do not change anything. Just show me the plan and then move on to the next step.'],
+    ['Please do not remove anything; just read the itinerary.'],
+  ])('does not treat negated writes or move-on idioms as affirmative in %s', (goal) => {
+    const selected = createDeterministicToolSelector({ maxTools: 5 })({
+      goal,
+      history: history({ revision: 3, items: [{ id: 'item-1' }] }, 'get_itinerary'),
+      stateRevision: 3,
+      step: 2,
+      tools,
+    });
+
+    expect(selected).toEqual(['get_itinerary', 'search_stays']);
   });
 
   it('is stable across ties and validates its configured cap', () => {

@@ -16,10 +16,13 @@ const STOP_WORDS = new Set([
   'is', 'it', 'of', 'on', 'one', 'or', 'that', 'the', 'this', 'to', 'with',
 ]);
 
-const READ_ONLY_INTENT = /(?:\bread[ -]?only\b|\b(?:do not|don['’]?t|dont|never)\s+(?:(?:apply|make)\s+)?(?:any\s+)?(?:change|changes|edit|edits|write|writes)\b|\b(?:do not|don['’]?t|dont|never)\s+stage\s+(?:anything|it|that|them|this|the\s+(?:item|option|result))\b|\bwithout\s+(?:changing|editing|writing(?:\s+to)?)\s+(?:anything|it|the\s+(?:board|plan|state))\b)/i;
-const AFFIRMATIVE_WRITE_INTENT = /(?:^\s*(?:add|create|move|remove|stage|update)\b|\b(?:and|then)\s+(?:add|create|move|remove|stage|update)\b)/i;
+const READ_ONLY_INTENT = /(?:\bread[ -]?only\b|\b(?:do not|don['’]?t|dont|never)\s+(?:(?:apply|make)\s+)?(?:any\s+)?(?:change|changes|edit|edits|write|writes)\b|\b(?:do not|don['’]?t|dont|never)\s+(?:add|create|delete|drop|edit|include|move|remove|reschedule|shift|stage|update|write)\s+(?:anything|it|that|them|this|the\s+(?:board|item|option|plan|result|state))\b|\bwithout\s+(?:changing|editing|writing(?:\s+to)?)\s+(?:anything|it|the\s+(?:board|plan|state))\b)/i;
 const REFERENCE_FIELD = /(?:^id$|(?:item|ref|source|target)[A-Z_ -]*id$)/i;
 const REVISION_FIELD = /revision/i;
+const BASE_MUTATION_VERBS = [
+  'add', 'create', 'delete', 'drop', 'edit', 'include', 'move', 'remove',
+  'reschedule', 'shift', 'stage', 'update', 'write',
+] as const;
 
 export interface DeterministicToolSelectorOptions {
   /** Maximum prompt-visible tools. Defaults to four. */
@@ -34,6 +37,7 @@ export interface RankedRuntimeTool {
 }
 
 interface NormalizedOptions {
+  affirmativeWriteIntent: RegExp;
   maxTools: number;
   synonyms: ReadonlyMap<string, ReadonlySet<string>>;
 }
@@ -77,7 +81,7 @@ function rankRuntimeToolsWithOptions(
   const goalTokens = expandTokens(tokenize(context.goal), options.synonyms);
   const queryTokens = new Set([...goalTokens, ...historyEvidence.tokens]);
   const readOnlyIntent = READ_ONLY_INTENT.test(context.goal)
-    && !AFFIRMATIVE_WRITE_INTENT.test(context.goal);
+    && !options.affirmativeWriteIntent.test(context.goal);
 
   const ranked = context.tools.flatMap((tool, index) => {
     if (!isEligible(tool, historyEvidence, readOnlyIntent)) return [];
@@ -191,7 +195,30 @@ function normalizeOptions(options: DeterministicToolSelectorOptions): Normalized
     const frozen = new Set(groupTokens);
     for (const token of groupTokens) synonyms.set(token, frozen);
   }
-  return { maxTools, synonyms };
+  return {
+    affirmativeWriteIntent: buildAffirmativeWriteIntent(synonyms),
+    maxTools,
+    synonyms,
+  };
+}
+
+function buildAffirmativeWriteIntent(
+  synonyms: ReadonlyMap<string, ReadonlySet<string>>,
+): RegExp {
+  const verbs = new Set<string>(BASE_MUTATION_VERBS);
+  for (const verb of BASE_MUTATION_VERBS) {
+    for (const synonym of synonyms.get(verb) ?? []) verbs.add(synonym);
+  }
+  const alternatives = [...verbs].sort((left, right) => right.length - left.length).join('|');
+  const clauseStart = String.raw`(?:^\s*|[.!?;]\s*|\b(?:and|then)\s+)`;
+  const politePrefix = String.raw`(?:(?:please(?:,|\s)+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+need\s+(?:you\s+)?to\s+)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?`;
+  // `nothing`, `no`, and `not` negate the command. `move on` is an idiom,
+  // not a request to invoke a move tool.
+  const negativeObjectOrIdiom = String.raw`(?!\s+(?:no|not|nothing|on)\b)`;
+  return new RegExp(
+    `${clauseStart}${politePrefix}(?:just\\s+)?(?:${alternatives})\\b${negativeObjectOrIdiom}`,
+    'i',
+  );
 }
 
 function tokenize(value: string): string[] {
