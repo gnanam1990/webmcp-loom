@@ -5,12 +5,18 @@ import { platform, arch, release } from 'node:os';
 import { SMOKE_TASKS } from '../benchmarks/smoke-tasks.ts';
 import { TRAVEL_TASKS } from '../benchmarks/travel-tasks.ts';
 import { runLocalOllamaBenchmark } from '../benchmarks/local-ollama.ts';
+import {
+  createTravelToolSelector,
+  TRAVEL_RETRIEVAL_PROFILE,
+} from '../apps/travel-showcase/src/retrieval.ts';
+import { checkedOutSourceRevision } from './source-revision.mjs';
 
 const model = required('WEBMCP_OLLAMA_MODEL');
 const attemptsPerTask = integerEnv('WEBMCP_BENCHMARK_ATTEMPTS', 3);
 const tasks = selectedTasks(process.env.WEBMCP_BENCHMARK_TASK_IDS);
 const hardware = jsonEnv('WEBMCP_BENCHMARK_HARDWARE_JSON');
 const memory = jsonEnv('WEBMCP_BENCHMARK_MEMORY_JSON');
+const sourceRevision = checkedOutSourceRevision();
 
 const report = await runLocalOllamaBenchmark({
   attemptsPerTask,
@@ -22,6 +28,10 @@ const report = await runLocalOllamaBenchmark({
     maxTokens: integerEnv('WEBMCP_OLLAMA_MAX_TOKENS', 128),
     seed: integerEnv('WEBMCP_OLLAMA_SEED', 42),
     temperature: numberEnv('WEBMCP_OLLAMA_TEMPERATURE', 0),
+  },
+  retrieval: {
+    profile: { ...TRAVEL_RETRIEVAL_PROFILE, sourceRevision },
+    toolSelector: createTravelToolSelector(),
   },
   tasks,
 });

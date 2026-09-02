@@ -8,6 +8,7 @@ import type {
 export const TRAVEL_RETRIEVAL_PROFILE = Object.freeze({
   id: 'travel-deterministic-v1',
   maxTools: 4,
+  version: 1,
 } as const);
 
 const TRAVEL_SYNONYM_GROUPS = [

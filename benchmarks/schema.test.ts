@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BENCHMARK_FAILURE_DEFAULTS,
   BENCHMARK_MAX_TOOL_CALLS,
+  assertValidBenchmarkRetrievalProfile,
   assertValidBenchmarkTask,
 } from './schema.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
@@ -100,5 +101,30 @@ describe('benchmark foundation', () => {
         toolCalls: { ...task.expected.toolCalls, max: BENCHMARK_MAX_TOOL_CALLS + 1 },
       },
     })).toThrow('invalid tool-call bounds');
+  });
+
+  it('requires complete and bounded retrieval provenance', () => {
+    const profile = {
+      id: 'travel-deterministic-v1',
+      maxTools: 4,
+      sourceRevision: 'a'.repeat(40),
+      version: 1,
+    };
+
+    expect(() => assertValidBenchmarkRetrievalProfile(profile)).not.toThrow();
+    expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, id: ' ' }))
+      .toThrow('id is required');
+    expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, version: 0 }))
+      .toThrow('positive integer');
+    expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, maxTools: 21 }))
+      .toThrow('integer from 1 to 20');
+    expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, sourceRevision: 'abc123' }))
+      .toThrow('exact 40-character Git commit');
+    expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, sourceRevision: '0'.repeat(40) }))
+      .toThrow('exact 40-character Git commit');
+    expect(() => assertValidBenchmarkRetrievalProfile({
+      ...profile,
+      id: undefined,
+    } as unknown as typeof profile)).toThrow('id is required');
   });
 });

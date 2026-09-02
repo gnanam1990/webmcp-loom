@@ -65,6 +65,13 @@ WEBMCP_BENCHMARK_TASK_IDS=smoke-read-constraints \
 npm run benchmark:ollama
 ```
 
+The script applies `travel-deterministic-v1` to the actual runtime calls and
+records its numeric version, enforced tool cap and the exact checked-out Git
+commit in every attempt, the batch and the top-level local report. The launcher
+derives the revision from `HEAD`, so an environment override cannot create false
+provenance. Historical v1 reports remain readable and are not retroactively
+attributed to this profile.
+
 That probe is explicitly exploratory. A report is selection-eligible only if
 it runs all 30 tasks three times and supplies both JSON objects below:
 

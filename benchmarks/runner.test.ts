@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { createScriptedModel, type ScriptedStep } from '../apps/travel-showcase/src/app/scripted-model.js';
+import { createTravelToolSelector, TRAVEL_RETRIEVAL_PROFILE } from '../apps/travel-showcase/src/retrieval.js';
 import { SMOKE_TASKS } from './smoke-tasks.js';
 import { runBenchmarkTask } from './runner.js';
 import type { BenchmarkTask } from './schema.js';
 
 const MODEL = { backend: 'scripted', identifier: 'runner-test-script' } as const;
+const RETRIEVAL_PROFILE = {
+  ...TRAVEL_RETRIEVAL_PROFILE,
+  sourceRevision: 'a'.repeat(40),
+} as const;
 
 function task(id: string): BenchmarkTask {
   const found = SMOKE_TASKS.find((candidate) => candidate.id === id);
@@ -42,6 +47,119 @@ describe('deterministic benchmark runner', () => {
     });
     expect(result.toolCalls).toEqual([expect.objectContaining({ toolName: 'get_trip_constraints', step: 1 })]);
     expect(result.assertions.every((entry) => entry.passed)).toBe(true);
+  });
+
+  it('applies and records the exact retrieval profile used for model prompts', async () => {
+    const selected: string[][] = [];
+    const travelSelector = createTravelToolSelector();
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([
+        { tool: 'get_trip_constraints', input: {} },
+        { tool: null, message: 'Booking is not available.' },
+      ]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: RETRIEVAL_PROFILE,
+        toolSelector: (context) => {
+          const names = [...travelSelector(context)];
+          selected.push(names);
+          return names;
+        },
+      },
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(selected[0]).toContain('get_trip_constraints');
+    expect(selected[0]).toHaveLength(TRAVEL_RETRIEVAL_PROFILE.maxTools);
+    expect(result.retrievalProfile).toEqual(RETRIEVAL_PROFILE);
+    expect(result.assertions.every(({ passed }) => passed)).toBe(true);
+  });
+
+  it('fails before model generation when retrieval provenance is abbreviated', async () => {
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: { ...RETRIEVAL_PROFILE, sourceRevision: 'abc123' },
+        toolSelector: createTravelToolSelector(),
+      },
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result).toMatchObject({
+      failure: { category: 'configuration', code: 'missing_profile' },
+      metrics: { decisionCount: 0 },
+      outcome: 'runtime_error',
+    });
+    expect(result.retrievalProfile).toBeUndefined();
+  });
+
+  it('classifies a missing retrieval id without echoing malformed metadata', async () => {
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: { ...RETRIEVAL_PROFILE, id: undefined },
+        toolSelector: createTravelToolSelector(),
+      } as unknown as NonNullable<Parameters<typeof runBenchmarkTask>[0]['retrieval']>,
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result).toMatchObject({
+      failure: { category: 'configuration', code: 'missing_profile' },
+      metrics: { decisionCount: 0 },
+      outcome: 'runtime_error',
+    });
+    expect(result.retrievalProfile).toBeUndefined();
+  });
+
+  it('bounds an oversized selector result to the recorded profile cap', async () => {
+    let advertisedToolCount = 0;
+    const result = await runBenchmarkTask({
+      model: {
+        generate: async ({ responseSchema }) => {
+          const choices = responseSchema.oneOf;
+          if (!Array.isArray(choices)) throw new Error('Expected the runtime decision choices.');
+          advertisedToolCount = choices.length - 1;
+          return JSON.stringify({ type: 'final', message: 'No changes requested.' });
+        },
+      },
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: { ...RETRIEVAL_PROFILE, maxTools: 2 },
+        toolSelector: ({ tools }) => tools.map(({ name }) => name),
+      },
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(advertisedToolCount).toBe(2);
+    expect(result.retrievalProfile?.maxTools).toBe(2);
+  });
+
+  it('preserves the runtime configuration failure for a non-array selector result', async () => {
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: RETRIEVAL_PROFILE,
+        toolSelector: (() => null) as unknown as ReturnType<typeof createTravelToolSelector>,
+      },
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result).toMatchObject({
+      failure: {
+        code: 'execution_failed',
+        message: 'Tool selector must return at least one advertised tool name.',
+      },
+      metrics: { decisionCount: 0 },
+      outcome: 'runtime_error',
+    });
   });
 
   it('counts the pending approved write and verifies search identifier reuse', async () => {

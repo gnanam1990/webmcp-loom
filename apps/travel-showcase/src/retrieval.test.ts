@@ -34,7 +34,7 @@ describe('travel retrieval profile', () => {
   it('is versioned and narrows the initial planning surface to relevant reads', () => {
     const selected = createTravelToolSelector()(context());
 
-    expect(TRAVEL_RETRIEVAL_PROFILE).toEqual({ id: 'travel-deterministic-v1', maxTools: 4 });
+    expect(TRAVEL_RETRIEVAL_PROFILE).toEqual({ id: 'travel-deterministic-v1', maxTools: 4, version: 1 });
     expect(selected).toHaveLength(4);
     expect(selected).toEqual(expect.arrayContaining([
       'get_trip_constraints',

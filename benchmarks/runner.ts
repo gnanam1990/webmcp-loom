@@ -9,6 +9,7 @@ import { benchmarkFixture } from './fixtures.js';
 import {
   BENCHMARK_FAILURE_DEFAULTS,
   BENCHMARK_SCHEMA_VERSION,
+  assertValidBenchmarkRetrievalProfile,
   assertValidBenchmarkTask,
 } from './schema.js';
 import type {
@@ -21,17 +22,24 @@ import type {
   RuntimeModel,
   RuntimeModelRequest,
   RuntimeTool,
+  RuntimeToolSelector,
 } from '@webmcp-loom/runtime';
 import type {
   BenchmarkAssertion,
   BenchmarkFailure,
   BenchmarkFailureCode,
   BenchmarkModelDescriptor,
+  BenchmarkRetrievalProfile,
   BenchmarkResult,
   BenchmarkTask,
   BenchmarkToolCallRecord,
   IdentifierReuseExpectation,
 } from './schema.js';
+
+export interface BenchmarkRetrievalConfiguration {
+  profile: BenchmarkRetrievalProfile;
+  toolSelector: RuntimeToolSelector;
+}
 
 export interface BenchmarkRunnerOptions {
   /** Overrides the task-derived approval behaviour for an experiment. */
@@ -40,6 +48,7 @@ export interface BenchmarkRunnerOptions {
   now?: () => Date;
   model: RuntimeModel;
   modelDescriptor: BenchmarkModelDescriptor;
+  retrieval?: BenchmarkRetrievalConfiguration;
   task: BenchmarkTask;
 }
 
@@ -77,6 +86,9 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
   let fixture: ReturnType<typeof benchmarkFixture>;
   try {
     assertValidBenchmarkTask(options.task);
+    if (options.retrieval !== undefined) {
+      assertValidBenchmarkRetrievalProfile(options.retrieval.profile);
+    }
     fixture = benchmarkFixture(options.task.fixture);
   } catch (error) {
     return configurationResult(options, startedAt, error);
@@ -127,6 +139,9 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
       getStateRevision: () => store.getState().revision,
       maxSteps: options.task.expected.toolCalls.max + 1,
       maxToolCalls: options.task.expected.toolCalls.max,
+      ...(options.retrieval === undefined
+        ? {}
+        : { toolSelector: boundedToolSelector(options.retrieval) }),
       ...(approval.callback === undefined ? {} : { approve: approval.callback }),
       onEvent: (event) => {
         observedEvents.push(event);
@@ -171,12 +186,23 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
     },
     model: options.modelDescriptor,
     outcome,
+    ...(options.retrieval === undefined ? {} : { retrievalProfile: options.retrieval.profile }),
     startedAt: startedAt.toISOString(),
     taskId: options.task.id,
     toolCalls: calls.map(toToolCallRecord),
     version: BENCHMARK_SCHEMA_VERSION,
   };
   return result;
+}
+
+/** Keeps the selector's effective prompt surface within its recorded cap. */
+function boundedToolSelector(retrieval: BenchmarkRetrievalConfiguration): RuntimeToolSelector {
+  return (context) => {
+    const selectedNames = retrieval.toolSelector(context);
+    return Array.isArray(selectedNames)
+      ? selectedNames.slice(0, retrieval.profile.maxTools)
+      : selectedNames;
+  };
 }
 
 function observeModel(source: RuntimeModel): ObservedModel {
@@ -407,6 +433,8 @@ function configurationResult(
 ): BenchmarkResult {
   const code: BenchmarkFailureCode = error instanceof Error && error.message.startsWith('Unknown benchmark fixture')
     ? 'missing_fixture'
+    : error instanceof Error && error.message.startsWith('Retrieval profile')
+      ? 'missing_profile'
     : 'invalid_task';
   return {
     assertions: [],
@@ -421,6 +449,9 @@ function configurationResult(
     },
     model: options.modelDescriptor,
     outcome: 'runtime_error',
+    ...(options.retrieval === undefined || code === 'missing_profile'
+      ? {}
+      : { retrievalProfile: options.retrieval.profile }),
     startedAt: startedAt.toISOString(),
     taskId: options.task.id,
     toolCalls: [],

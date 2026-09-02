@@ -12,15 +12,18 @@ import {
   inspectOllamaModel,
 } from '../packages/model-adapters/src/ollama.js';
 import { runBenchmarkBatch } from './batch.js';
+import { assertValidBenchmarkRetrievalProfile } from './schema.js';
 import type {
   OllamaModelProvenance,
   OllamaRuntimeModelOptions,
 } from '../packages/model-adapters/src/ollama.js';
 import type { RuntimeModel } from '@webmcp-loom/runtime';
 import type { BenchmarkBatchReport } from './batch.js';
+import type { BenchmarkRetrievalConfiguration } from './runner.js';
+import type { BenchmarkRetrievalProfile } from './schema.js';
 import type { BenchmarkResult, BenchmarkTask } from './schema.js';
 
-export const LOCAL_OLLAMA_BENCHMARK_VERSION = 1 as const;
+export const LOCAL_OLLAMA_BENCHMARK_VERSION = 2 as const;
 
 export interface LocalBenchmarkHardwareProfile {
   architecture: string;
@@ -47,6 +50,7 @@ export interface LocalOllamaBenchmarkOptions {
   model: string;
   modelOptions?: Omit<OllamaRuntimeModelOptions, 'baseUrl' | 'model'>;
   now?: () => Date;
+  retrieval?: BenchmarkRetrievalConfiguration;
   tasks: readonly BenchmarkTask[];
 }
 
@@ -65,8 +69,9 @@ export interface LocalOllamaBenchmarkReport {
   hardware?: LocalBenchmarkHardwareProfile;
   memory?: LocalBenchmarkMemoryMeasurement;
   provenance: OllamaModelProvenance;
+  retrievalProfile?: BenchmarkRetrievalProfile;
   selection: LocalSelectionReadiness;
-  version: typeof LOCAL_OLLAMA_BENCHMARK_VERSION;
+  version: 1 | typeof LOCAL_OLLAMA_BENCHMARK_VERSION;
 }
 
 export interface LocalOllamaBenchmarkDependencies {
@@ -102,6 +107,7 @@ export async function runLocalOllamaBenchmark(
       ...(provenance.quantization === undefined ? {} : { quantization: provenance.quantization }),
     },
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.retrieval === undefined ? {} : { retrieval: options.retrieval }),
     tasks: options.tasks,
   });
   return {
@@ -110,6 +116,7 @@ export async function runLocalOllamaBenchmark(
     ...(options.hardware === undefined ? {} : { hardware: options.hardware }),
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     provenance,
+    ...(options.retrieval === undefined ? {} : { retrievalProfile: options.retrieval.profile }),
     selection: evaluateLocalSelectionReadiness(report, options),
     version: LOCAL_OLLAMA_BENCHMARK_VERSION,
   };
@@ -176,6 +183,9 @@ function validateOptions(options: LocalOllamaBenchmarkOptions): void {
     throw new Error('attemptsPerTask must be a positive integer.');
   }
   if (options.tasks.length === 0) throw new Error('At least one benchmark task is required.');
+  if (options.retrieval !== undefined) {
+    assertValidBenchmarkRetrievalProfile(options.retrieval.profile);
+  }
   validateHardware(options.hardware);
   validateMemory(options.memory);
 }
