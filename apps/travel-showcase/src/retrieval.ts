@@ -95,7 +95,7 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
   const planningVerb = mentions(/\b(build|prepare|plan)\b/);
   const explicitDomainCount = [wantsActivity, explicitStay, explicitFlight].filter(Boolean).length;
   const fullTripPlan = planningVerb
-    && mentions(/\b(?:build|prepare|plan)\b.{0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
+    && mentions(/\b(?:build|prepare|plan)\b(?:(?!\b(?:activit|experience|flight|hotel|stay)\w*\b).){0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
   const multiDomainPlan = planningVerb && explicitDomainCount > 1;
   const wantsStay = fullTripPlan || explicitStay;
   const wantsFlight = fullTripPlan || explicitFlight;
@@ -146,7 +146,7 @@ function classifyItemRemoval(goal: string): 'none' | 'singular' | 'unsupported' 
   let unsupported = false;
   for (const clause of clauses) {
     const command = clause.trim().replace(
-      /^(?:(?:please,?\s+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+need\s+(?:you\s+)?to\s+)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?(?:just\s+)?/,
+      /^(?:(?:please,?\s+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+(?:need|want)\s+(?:you\s+)?to\s+(?:please\s+)?)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?(?:just\s+)?/,
       '',
     );
     const match = /^(?:remove|delete|drop)\b\s+(.+)$/.exec(command);

@@ -205,7 +205,7 @@ function buildAffirmativeWriteIntent(
   }
   const alternatives = [...verbs].sort((left, right) => right.length - left.length).join('|');
   const clauseStart = String.raw`(?:^\s*|[.!?;]\s*|\b(?:and|but|then)\s+)`;
-  const politePrefix = String.raw`(?:(?:please(?:,|\s)+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+need\s+(?:you\s+)?to\s+)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?`;
+  const politePrefix = String.raw`(?:(?:please(?:,|\s)+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+(?:need|want)\s+(?:you\s+)?to\s+(?:please\s+)?)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?`;
   // `nothing`, `no`, and `not` negate the command. `move on` is an idiom,
   // not a request to invoke a move tool.
   const negativeObjectOrIdiom = String.raw`(?!\s+(?:are|is|looks?|seems?|sounds?|was|were)\b)(?!\s+(?:not|nothing)\b)(?!\s+no(?![\w-]))(?!\s+on\b)(?!\s+to\s+(?:the\s+)?next\s+step\b)`;

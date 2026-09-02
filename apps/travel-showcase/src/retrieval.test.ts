@@ -46,6 +46,7 @@ describe('travel retrieval profile', () => {
 
   it.each([
     ['Plan a flight to Tokyo.', 'search_flights', 'search_stays'],
+    ['Plan a flight for this trip.', 'search_flights', 'search_stays'],
     ['Prepare a Kyoto hotel stay.', 'search_stays', 'search_flights'],
   ])('keeps a scoped planning request inside its domain for %s', (request, expected, excluded) => {
     const selected = createTravelToolSelector()({ ...context(), goal: request });
@@ -119,6 +120,7 @@ describe('travel retrieval profile', () => {
     'Remove the itinerary item.',
     'Remove 1 staged stay.',
     'Remove one staged stay.',
+    'I want to remove the itinerary item.',
     'Please delete the staged Tokyo stay.',
     'I need you to drop the trip item.',
   ])('recognizes a singular item-removal command: %s', (request) => {

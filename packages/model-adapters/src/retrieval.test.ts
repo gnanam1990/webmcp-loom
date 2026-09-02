@@ -137,6 +137,7 @@ describe('deterministic tool retrieval', () => {
     ['Could you delete the item without changing anything else?', 'remove_itinerary_item'],
     ['Would you please delete the item without changing anything else?', 'remove_itinerary_item'],
     ['I need you to drop the item without changing anything else.', 'remove_itinerary_item'],
+    ['I want to remove the item without changing anything else.', 'remove_itinerary_item'],
     ['Please reschedule the item without changing anything else.', 'move_itinerary_item'],
     ['Could you shift the item without changing anything else?', 'move_itinerary_item'],
     ['Do not remove anything, but remove the existing item.', 'remove_itinerary_item'],
