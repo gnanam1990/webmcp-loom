@@ -56,7 +56,10 @@ A green local test or CI run proves only the exercised environment and current
 head. Browser visual checks, exact-head review, and a separate deployment
 approval remain required for a release.
 
-The committed Qwen3 0.6B result predates `travel-deterministic-v1` and therefore
-does not measure it. A retrieval-assisted model claim needs a new complete run
-that records the profile id, exact source revision, model artifact and all
-existing correctness, safety, latency and memory evidence.
+The first committed Qwen3 0.6B result predates `travel-deterministic-v1`. A
+second complete 30-by-3 run records the profile id, exact source revision and
+model artifact on every attempt. It reaches 100% schema-valid decisions but
+zero complete task passes and zero identifier reuse, so Qwen3 0.6B remains
+ineligible. That comparison has no current-run memory sample and does not
+serialize its decoding defaults; even with those gaps closed, its correctness,
+approval and recovery failures independently block selection.

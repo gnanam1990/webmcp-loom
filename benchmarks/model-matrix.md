@@ -43,6 +43,22 @@ Model paths are machine-specific runner configuration and are never committed
 to this repository. Future recorded results must capture artifact digests and
 engine/hardware metadata at run time.
 
+## Recorded no-go evidence
+
+`qwen3:0.6b` is a measured small-model baseline, not the `Qwen/Qwen3-4B`
+candidate listed above. Two complete 30-task, three-attempt reports are retained:
+
+| Run | Retrieval | Complete success | Schema valid | Identifier reuse | Decision |
+| --- | --- | ---: | ---: | ---: | --- |
+| Initial Ollama run | none recorded | 0/90 | 96.67% | 0% | Rejected |
+| `travel-deterministic-v1` | version 1, maximum 4 tools | 0/90 | 100% | 0% | Rejected |
+
+The retrieval-assisted run contained no malformed JSON failures and had lower
+observed exploratory latency, but it did not demonstrate required reads,
+approval behavior, complete task success or identifier reuse. Neither report
+selects a showcase default, and neither result should be generalized to the
+larger Qwen3 4B candidate without a separate exact-artifact run.
+
 ## Measurement protocol
 
 - Run every task with the same deterministic fixtures, tool surface, prompt
