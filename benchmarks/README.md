@@ -77,6 +77,14 @@ The memory method must observe the model-serving process or browser runtime,
 not merely the caller shell. Missing, over-budget or invalid measurements remain
 selection blockers in the report.
 
+The first complete retained local run is documented in
+[`results/qwen3-0.6b-ollama-30x3-2026-09-02.md`](results/qwen3-0.6b-ollama-30x3-2026-09-02.md).
+It covers all 30 tasks three times and records valid latency and memory
+measurements, but `qwen3:0.6b` is **ineligible** because it fails correctness,
+identifier-reuse, approval and recovery gates. The raw and measured JSON files
+are committed beside the summary, and a test proves that attaching the sampled
+memory value changed no retained attempt evidence.
+
 ## Foundation verification
 
 The root verification command typechecks this directory. To repeat only its
