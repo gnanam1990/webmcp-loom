@@ -11,6 +11,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      '@webmcp-loom/model-adapters/retrieval': fileURLToPath(
+        new URL('./packages/model-adapters/src/retrieval.ts', import.meta.url),
+      ),
+      '@webmcp-loom/model-adapters': fileURLToPath(
+        new URL('./packages/model-adapters/src/index.ts', import.meta.url),
+      ),
       '@webmcp-loom/runtime': fileURLToPath(
         new URL('./packages/runtime/src/index.ts', import.meta.url),
       ),
