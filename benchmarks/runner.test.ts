@@ -140,6 +140,28 @@ describe('deterministic benchmark runner', () => {
     expect(result.retrievalProfile?.maxTools).toBe(2);
   });
 
+  it('preserves the runtime configuration failure for a non-array selector result', async () => {
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: RETRIEVAL_PROFILE,
+        toolSelector: (() => null) as unknown as ReturnType<typeof createTravelToolSelector>,
+      },
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result).toMatchObject({
+      failure: {
+        code: 'execution_failed',
+        message: 'Tool selector must return at least one advertised tool name.',
+      },
+      metrics: { decisionCount: 0 },
+      outcome: 'runtime_error',
+    });
+  });
+
   it('counts the pending approved write and verifies search identifier reuse', async () => {
     const result = await resultFor('smoke-select-kyoto-stay', [
       { tool: 'search_stays', input: { cityId: 'kyoto', maxPricePerNightInr: 6_000 } },

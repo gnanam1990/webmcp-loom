@@ -197,7 +197,12 @@ export async function runBenchmarkTask(options: BenchmarkRunnerOptions): Promise
 
 /** Keeps the selector's effective prompt surface within its recorded cap. */
 function boundedToolSelector(retrieval: BenchmarkRetrievalConfiguration): RuntimeToolSelector {
-  return (context) => retrieval.toolSelector(context).slice(0, retrieval.profile.maxTools);
+  return (context) => {
+    const selectedNames = retrieval.toolSelector(context);
+    return Array.isArray(selectedNames)
+      ? selectedNames.slice(0, retrieval.profile.maxTools)
+      : selectedNames;
+  };
 }
 
 function observeModel(source: RuntimeModel): ObservedModel {
