@@ -8,8 +8,8 @@ and execution remain inside `@webmcp-loom/runtime`.
 
 ## OpenAI-compatible cloud contract
 
-The cloud adapter requires an exact HTTPS chat-completions endpoint and a
-request-time credential-header resolver. It does not choose a provider, read an
+The cloud adapter requires an exact, query-free HTTPS chat-completions endpoint
+and a request-time credential-header resolver. It does not choose a provider, read an
 environment variable, retain a credential, follow redirects, retry a write, or
 make a request during construction.
 

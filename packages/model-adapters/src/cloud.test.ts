@@ -87,11 +87,9 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
     ['plain HTTP', 'http://models.example.test/v1/chat/completions', 'must use HTTPS'],
     ['embedded credentials', 'https://user:pass@models.example.test/v1/chat/completions', 'must not contain credentials'],
     ['fragment', 'https://models.example.test/v1/chat/completions#secret', 'must not contain a fragment'],
-    ['credential query', 'https://models.example.test/v1/chat/completions?api_key=fixture', 'credential query parameters'],
-    ['camel-case token query', 'https://models.example.test/v1/chat/completions?authToken=fixture', 'credential query parameters'],
-    ['generic key query', 'https://models.example.test/v1/chat/completions?key=fixture', 'credential query parameters'],
-    ['prefixed API key query', 'https://models.example.test/v1/chat/completions?my_api_key=fixture', 'credential query parameters'],
-    ['consumer API key query', 'https://models.example.test/v1/chat/completions?consumer_apikey=fixture', 'credential query parameters'],
+    ['credential query', 'https://models.example.test/v1/chat/completions?api_key=fixture', 'must not contain query parameters'],
+    ['authentication query', 'https://models.example.test/v1/chat/completions?authentication=fixture', 'must not contain query parameters'],
+    ['provider version query', 'https://models.example.test/v1/chat/completions?api-version=2026-01-01', 'must not contain query parameters'],
   ])('rejects a %s endpoint before a request is possible', (_label, endpoint, message) => {
     expect(() => createOpenAiCompatibleCloudRuntimeModel({
       endpoint,
@@ -100,18 +98,6 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
       resolveCredentialHeaders: () => ({}),
     })).toThrow(message);
   });
-
-  it.each(['tokenizer', 'secretary', 'oauth', 'api-version'])(
-    'does not misclassify the non-credential query name %s',
-    (name) => {
-      expect(() => createOpenAiCompatibleCloudRuntimeModel({
-        endpoint: `https://models.example.test/v1/chat/completions?${name}=fixture`,
-        fetch: vi.fn(),
-        model: 'fixture',
-        resolveCredentialHeaders: () => ({}),
-      })).not.toThrow();
-    },
-  );
 
   it('rejects invalid timeout and model configuration before resolving credentials', () => {
     expect(() => createOpenAiCompatibleCloudRuntimeModel({

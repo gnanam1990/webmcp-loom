@@ -8,24 +8,6 @@ const MAX_CREDENTIAL_HEADERS = 32;
 const MAX_CREDENTIAL_HEADER_NAME_CHARACTERS = 128;
 const MAX_CREDENTIAL_HEADER_VALUE_CHARACTERS = 8_192;
 const MAX_CREDENTIAL_HEADERS_CHARACTERS = 32_768;
-const SENSITIVE_QUERY_WORDS = new Set([
-  'api-key',
-  'apikey',
-  'access-key',
-  'accesskey',
-  'auth',
-  'authorization',
-  'credential',
-  'key',
-  'password',
-  'private-key',
-  'privatekey',
-  'secret',
-  'secret-key',
-  'secretkey',
-  'signature',
-  'token',
-]);
 const FORBIDDEN_CREDENTIAL_HEADERS = new Set([
   'accept',
   'connection',
@@ -301,25 +283,8 @@ function validateEndpoint(value: string): string {
     throw new Error('endpoint must not contain credentials.');
   }
   if (endpoint.hash) throw new Error('endpoint must not contain a fragment.');
-  for (const name of endpoint.searchParams.keys()) {
-    if (isSensitiveQueryName(name)) {
-      throw new Error('endpoint must not contain credential query parameters.');
-    }
-  }
+  if (endpoint.search) throw new Error('endpoint must not contain query parameters.');
   return endpoint.href;
-}
-
-function isSensitiveQueryName(value: string): boolean {
-  const words = value
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .split(/[^a-z0-9]+/i)
-    .filter(Boolean)
-    .map((word) => word.toLowerCase());
-  return words.some((word) => SENSITIVE_QUERY_WORDS.has(word))
-    || words.some((word, index) => {
-      const next = words[index + 1];
-      return next !== undefined && SENSITIVE_QUERY_WORDS.has(`${word}-${next}`);
-    });
 }
 
 function buildHeaders(values: Readonly<Record<string, string>>): Record<string, string> {
