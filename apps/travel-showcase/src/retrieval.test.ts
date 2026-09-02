@@ -47,12 +47,26 @@ describe('travel retrieval profile', () => {
   it.each([
     ['Plan a flight to Tokyo.', 'search_flights', 'search_stays'],
     ['Plan a flight for this trip.', 'search_flights', 'search_stays'],
+    ['Plan a red-eye for this trip.', 'search_flights', 'search_stays'],
+    ['Plan airfare for this trip.', 'search_flights', 'search_stays'],
     ['Prepare a Kyoto hotel stay.', 'search_stays', 'search_flights'],
+    ['Plan accommodation for this trip.', 'search_stays', 'search_flights'],
   ])('keeps a scoped planning request inside its domain for %s', (request, expected, excluded) => {
     const selected = createTravelToolSelector()({ ...context(), goal: request });
 
     expect(selected[0]).toBe(expected);
     expect(selected).not.toContain(excluded);
+  });
+
+  it('keeps a cultural-activity request from becoming a full-trip plan', () => {
+    const selected = createTravelToolSelector()({
+      ...context(),
+      goal: 'Plan a cultural activity for this trip.',
+    });
+
+    expect(selected[0]).toBe('search_activities');
+    expect(selected).not.toContain('search_flights');
+    expect(selected).not.toContain('search_stays');
   });
 
   it('keeps a multi-domain planning request on the full planning workflow', () => {

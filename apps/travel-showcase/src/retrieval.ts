@@ -95,7 +95,7 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
   const planningVerb = mentions(/\b(build|prepare|plan)\b/);
   const explicitDomainCount = [wantsActivity, explicitStay, explicitFlight].filter(Boolean).length;
   const fullTripPlan = planningVerb
-    && mentions(/\b(?:build|prepare|plan)\b(?:(?!\b(?:activit|experience|flight|hotel|stay)\w*\b).){0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
+    && mentions(/\b(?:build|prepare|plan)\b(?:(?!\b(?:activit|culture|experience|flight|fly|airfare|outbound|return|red[- ]?eye|stay|hotel|accommodation|lodging)\w*\b).){0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
   const multiDomainPlan = planningVerb && explicitDomainCount > 1;
   const wantsStay = fullTripPlan || explicitStay;
   const wantsFlight = fullTripPlan || explicitFlight;
