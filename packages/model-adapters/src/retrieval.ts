@@ -100,13 +100,7 @@ function rankRuntimeToolsWithOptions(
     return [{ index, name: tool.name, score }];
   });
 
-  // A write-only page may have no history-backed candidate yet. The selector
-  // is prompt shaping, not a policy boundary, so fall back to the advertised
-  // surface instead of turning a valid runtime configuration into an error.
-  const candidates = ranked.length > 0
-    ? ranked
-    : context.tools.map((tool, index) => ({ index, name: tool.name, score: 0 }));
-  return candidates
+  return ranked
     .sort((left, right) => right.score - left.score || left.index - right.index)
     .map(({ name, score }) => ({ name, score }));
 }

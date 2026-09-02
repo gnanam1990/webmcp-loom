@@ -31,13 +31,17 @@ export function createTravelToolSelector(): RuntimeToolSelector {
     synonymGroups: TRAVEL_SYNONYM_GROUPS,
   });
   return (context) => {
+    const explicitItemRemoval = hasExplicitItemRemoval(context.goal);
     const successfulTools = new Set(context.history.filter(({ ok }) => ok).map(({ tool }) => tool));
     const eligible = rankEligibleTools(context).filter((name) => {
       if (name === 'add_itinerary_item') {
         return ['search_activities', 'search_flights', 'search_stays']
           .some((source) => successfulTools.has(source));
       }
-      if (name === 'move_itinerary_item' || name === 'remove_itinerary_item') {
+      if (name === 'remove_itinerary_item') {
+        return explicitItemRemoval && successfulTools.has('get_itinerary');
+      }
+      if (name === 'move_itinerary_item') {
         return successfulTools.has('get_itinerary');
       }
       return true;
@@ -65,7 +69,7 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
       ? ['move_itinerary_item', 'get_itinerary']
       : ['get_itinerary'];
   }
-  if (mentions(/\b(remove|delete|drop)\b/)) {
+  if (hasExplicitItemRemoval(goal)) {
     return has('get_itinerary')
       ? ['remove_itinerary_item', 'get_itinerary']
       : ['get_itinerary'];
@@ -83,7 +87,9 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
     if (last === 'search_stays') return ['add_itinerary_item', 'search_stays', 'get_itinerary'];
   }
 
-  const wantsPlan = mentions(/(?:\b(?:build|prepare)\b|\bplan\s+(?:a|all|my|our|the|this|whole)\b)/);
+  const scopedPlan = mentions(/\b(?:build|prepare|plan)\s+(?:(?:a|an|my|our|the|this)\s+)?(?:activit|experience|flight|hotel|stay)\w*\b/);
+  const wantsPlan = !scopedPlan
+    && mentions(/\b(?:build|prepare|plan)\b.{0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
   const wantsActivity = mentions(/\b(activit|culture|experience)\w*\b/);
   const wantsStay = wantsPlan || mentions(/\b(stay|hotel|accommodation|lodging)\w*\b/);
   const wantsFlight = wantsPlan || mentions(/\b(flight|fly|airfare|outbound|return|red[- ]?eye)\w*\b/);
@@ -124,6 +130,16 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
   if (mentions(/\b(constraint|booking|origin|date)\w*\b/)) return ['get_trip_constraints'];
   if (mentions(/\b(destination|cities|city)\w*\b/)) return ['list_destinations'];
   return [];
+}
+
+function hasExplicitItemRemoval(goal: string): boolean {
+  const normalized = goal.toLowerCase();
+  if (!/\b(remove|delete|drop)\b/.test(normalized)) return false;
+  if (/\bclose\s+(?:(?:my|our|the|this)\s+)?account\b/.test(normalized)) return false;
+  if (/\b(?:remove|delete|drop)\s+(?:(?:my|our|the|this)\s+)?(?:(?:all|entire|whole)\s+)?(?:account|itinerary|trip)\b/.test(normalized)) {
+    return false;
+  }
+  return /\b(item|flight|stay|hotel|accommodation|lodging|activity|experience)\w*\b/.test(normalized);
 }
 
 function uniqueNames(names: readonly string[]): string[] {

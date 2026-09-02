@@ -44,6 +44,36 @@ describe('travel retrieval profile', () => {
     expect(selected).not.toContain('add_itinerary_item');
   });
 
+  it.each([
+    ['Plan a flight to Tokyo.', 'search_flights', 'search_stays'],
+    ['Prepare a Kyoto hotel stay.', 'search_stays', 'search_flights'],
+  ])('keeps a scoped planning request inside its domain for %s', (request, expected, excluded) => {
+    const selected = createTravelToolSelector()({ ...context(), goal: request });
+
+    expect(selected[0]).toBe(expected);
+    expect(selected).not.toContain(excluded);
+  });
+
+  it.each([
+    'Delete the whole trip.',
+    'Delete the whole trip including every hotel stay.',
+    'Remove my itinerary.',
+    'Close my account and delete the trip.',
+  ])('does not advertise item removal for unsupported destructive intent: %s', (request) => {
+    const selected = createTravelToolSelector()({
+      ...context([{
+        step: 1,
+        tool: 'get_itinerary',
+        input: {},
+        ok: true,
+        output: { revision: 4, items: [{ id: 'item-2', kind: 'stay' }] },
+      }]),
+      goal: request,
+    });
+
+    expect(selected).not.toContain('remove_itinerary_item');
+  });
+
   it('admits staging after a search returns a reusable id and revision', () => {
     const selected = createTravelToolSelector()({
       ...context([{

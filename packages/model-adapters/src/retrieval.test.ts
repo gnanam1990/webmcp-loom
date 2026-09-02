@@ -95,6 +95,30 @@ describe('deterministic tool retrieval', () => {
     expect(selected).not.toContain('add_itinerary_item');
   });
 
+  it('returns no tools for a read-only request on a write-only surface', () => {
+    const selected = createDeterministicToolSelector({ maxTools: 4 })({
+      goal: 'Show the current state but do not change anything.',
+      history: [],
+      stateRevision: 1,
+      step: 1,
+      tools: tools.slice(2),
+    });
+
+    expect(selected).toEqual([]);
+  });
+
+  it('does not restore reference-bearing writes when successful evidence is absent', () => {
+    const selected = createDeterministicToolSelector({ maxTools: 4 })({
+      goal: 'Remove the existing itinerary item.',
+      history: [],
+      stateRevision: 1,
+      step: 1,
+      tools: tools.slice(2),
+    });
+
+    expect(selected).toEqual([]);
+  });
+
   it('preserves an affirmative mutation whose negative clause protects everything else', () => {
     const selected = createDeterministicToolSelector({ maxTools: 4 })({
       goal: 'Remove the existing itinerary item without changing anything else.',

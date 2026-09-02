@@ -15,7 +15,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "npm run build --workspace @webmcp-loom/model-adapters && tsc -b tsconfig.build.json && vite build",
+    "build": "tsc -b tsconfig.build.json && vite build",
     "dev": "vite",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --pretty false"

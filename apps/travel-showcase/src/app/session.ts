@@ -450,7 +450,7 @@ export function createSession(
           getStateRevision: () => store.getState().revision,
           signal: controller.signal,
           maxSteps: MAX_AGENT_STEPS,
-          toolSelector: selectTravelTools,
+          ...(backend.backend.kind === 'scripted' ? {} : { toolSelector: selectTravelTools }),
           onEvent,
           approve: (request) => new Promise<boolean>((resolve) => {
             pending = {
