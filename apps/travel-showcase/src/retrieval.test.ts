@@ -93,7 +93,7 @@ describe('travel retrieval profile', () => {
       goal: request,
     });
 
-    expect(selected).not.toContain('remove_itinerary_item');
+    expect(selected.filter((name) => name.endsWith('_itinerary_item'))).toEqual([]);
   });
 
   it.each([
@@ -117,6 +117,8 @@ describe('travel retrieval profile', () => {
 
   it.each([
     'Remove the itinerary item.',
+    'Remove 1 staged stay.',
+    'Remove one staged stay.',
     'Please delete the staged Tokyo stay.',
     'I need you to drop the trip item.',
   ])('recognizes a singular item-removal command: %s', (request) => {

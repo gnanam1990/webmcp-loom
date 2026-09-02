@@ -31,9 +31,11 @@ export function createTravelToolSelector(): RuntimeToolSelector {
     synonymGroups: TRAVEL_SYNONYM_GROUPS,
   });
   return (context) => {
-    const explicitItemRemoval = hasExplicitItemRemoval(context.goal);
+    const removalIntent = classifyItemRemoval(context.goal);
+    const explicitItemRemoval = removalIntent === 'singular';
     const successfulTools = new Set(context.history.filter(({ ok }) => ok).map(({ tool }) => tool));
     const eligible = rankEligibleTools(context).filter((name) => {
+      if (removalIntent === 'unsupported' && name.endsWith('_itinerary_item')) return false;
       if (name === 'add_itinerary_item') {
         return ['search_activities', 'search_flights', 'search_stays']
           .some((source) => successfulTools.has(source));
@@ -69,7 +71,7 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
       ? ['move_itinerary_item', 'get_itinerary']
       : ['get_itinerary'];
   }
-  if (hasExplicitItemRemoval(goal)) {
+  if (classifyItemRemoval(goal) === 'singular') {
     return has('get_itinerary')
       ? ['remove_itinerary_item', 'get_itinerary']
       : ['get_itinerary'];
@@ -136,10 +138,12 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
   return [];
 }
 
-function hasExplicitItemRemoval(goal: string): boolean {
+function classifyItemRemoval(goal: string): 'none' | 'singular' | 'unsupported' {
   const normalized = goal.toLowerCase();
-  if (/\bclose\s+(?:(?:my|our|the|this)\s+)?account\b/.test(normalized)) return false;
+  if (/\bclose\s+(?:(?:my|our|the|this)\s+)?account\b/.test(normalized)) return 'unsupported';
   const clauses = normalized.split(/(?:[.!?;]|\bbut\b|\bthen\b)/);
+  let singular = false;
+  let unsupported = false;
   for (const clause of clauses) {
     const command = clause.trim().replace(
       /^(?:(?:please,?\s+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+need\s+(?:you\s+)?to\s+)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?(?:just\s+)?/,
@@ -149,13 +153,24 @@ function hasExplicitItemRemoval(goal: string): boolean {
     if (match === null) continue;
     const target = match[1];
     if (target === undefined) continue;
-    if (/^(?:all|both|every|multiple|no|not|nothing|several|two|three|\d+)\b/.test(target)) continue;
-    if (/^(?:(?:my|our|the|this)\s+)?(?:(?:all|entire|whole)\s+)?(?:account|itinerary|trip)\b(?!\s+item\b)/.test(target)) continue;
-    if (/\b(?:items|flights|stays|hotels|accommodations|lodgings|activities|experiences)\b/.test(target)) continue;
+    if (/^(?:all|both|every|multiple|no|not|nothing|several|two|three|0|[2-9]|\d{2,})\b/.test(target)) {
+      unsupported = true;
+      continue;
+    }
+    if (/^(?:(?:my|our|the|this)\s+)?(?:(?:all|entire|whole)\s+)?(?:account|itinerary|trip)\b(?!\s+item\b)/.test(target)) {
+      unsupported = true;
+      continue;
+    }
+    if (/\b(?:items|flights|stays|hotels|accommodations|lodgings|activities|experiences)\b/.test(target)) {
+      unsupported = true;
+      continue;
+    }
     const singularTargets = target.match(/\b(?:itinerary\s+item|trip\s+item|item|flight|stay|hotel|accommodation|lodging|activity|experience)\b/g) ?? [];
-    if (singularTargets.length === 1) return true;
+    if (singularTargets.length === 1) singular = true;
+    else unsupported = true;
   }
-  return false;
+  if (unsupported) return 'unsupported';
+  return singular ? 'singular' : 'none';
 }
 
 function uniqueNames(names: readonly string[]): string[] {
