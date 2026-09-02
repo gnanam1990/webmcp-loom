@@ -29,7 +29,8 @@ attempts. The committed JSON is the unmodified runner output with SHA-256
 - all 10 smoke tasks and all 20 extended travel tasks;
 - three attempts per task, with all 90 attempts retained;
 - deterministic fixtures and the real runtime, selector, tool and policy path;
-- temperature `0`, seed `42`, and maximum 128 generated tokens;
+- temperature `0`, seed `42`, and maximum 128 generated tokens, as
+  source-bound runner defaults rather than fields serialized in this JSON;
 - no cloud fallback, best-run filtering, manual result deletion, model download,
   hardware declaration or current-run memory sample.
 
@@ -37,6 +38,11 @@ Because hardware and memory evidence were not supplied, this is an exploratory
 correctness comparison. Even a current memory sample could not rescue the
 selection verdict: correctness, identifier reuse, approval and recovery gates
 all fail independently.
+
+The missing decoding fields are also a reproducibility limitation. A future
+passing report must serialize those values before it can be treated as
+selection-grade evidence; the source-bound defaults retained here do not waive
+that requirement.
 
 ## Results
 
