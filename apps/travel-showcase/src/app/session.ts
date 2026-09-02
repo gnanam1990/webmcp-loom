@@ -22,6 +22,7 @@ import type {
   AgentApprovalRequest,
   AgentEvent,
   JsonObject,
+  RuntimeModel,
   RuntimeTool,
 } from '@webmcp-loom/runtime';
 import type { TripStore } from '../state.js';
@@ -136,6 +137,9 @@ export interface Session {
   reset(): void;
 }
 
+/** Model construction stays outside the session so provider loading cannot bypass runtime policy. */
+export type SessionModelFactory = (trip: TripState) => RuntimeModel;
+
 export const MAX_AGENT_STEPS = 6;
 
 function cityName(cityId: unknown): string {
@@ -248,6 +252,7 @@ export function createSession(
   store: TripStore = createTripStore(),
   tools: readonly RuntimeTool[] = createTravelTools(store),
   backend: BackendState = { status: 'ready', backend: SCRIPTED_BACKEND },
+  createModel: SessionModelFactory = (trip) => createScriptedModel(scriptFor(trip)),
 ): Session {
   const listeners = new Set<() => void>();
 
@@ -429,7 +434,7 @@ export function createSession(
       currentStep = 1;
       emit();
 
-      const model = createScriptedModel(scriptFor(store.getState()));
+      const model = createModel(store.getState());
 
       try {
         const result = await runAgentRuntime({
