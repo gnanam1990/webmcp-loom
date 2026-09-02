@@ -16,7 +16,7 @@ const STOP_WORDS = new Set([
   'is', 'it', 'of', 'on', 'one', 'or', 'that', 'the', 'this', 'to', 'with',
 ]);
 
-const READ_ONLY_INTENT = /(?:\bread[ -]?only\b|\b(?:do not|don['’]?t|dont|never)\s+(?:(?:apply|make)\s+)?(?:any\s+)?(?:change|changes|edit|edits|write|writes)\b|\b(?:do not|don['’]?t|dont|never)\s+(?:add|create|delete|drop|edit|include|move|remove|reschedule|shift|stage|update|write)\s+(?:anything|it|that|them|this|the\s+(?:board|item|option|plan|result|state))\b|\bwithout\s+(?:changing|editing|writing(?:\s+to)?)\s+(?:anything|it|the\s+(?:board|plan|state))\b)/i;
+const READ_ONLY_INTENT = /(?:\bread[ -]?only\b|\b(?:add|create|delete|drop|edit|include|move|remove|reschedule|shift|stage|update|write)\s+nothing\b|\b(?:do not|don['’]?t|dont|never)\s+(?:(?:apply|make)\s+)?(?:any\s+)?(?:change|changes|edit|edits|write|writes)\b|\b(?:do not|don['’]?t|dont|never)\s+(?:add|create|delete|drop|edit|include|move|remove|reschedule|shift|stage|update|write)\s+(?:anything|it|that|them|this|the\s+(?:board|item|option|plan|result|state))\b|\bwithout\s+(?:changing|editing|writing(?:\s+to)?)\s+(?:anything|it|the\s+(?:board|plan|state))\b)/i;
 const REFERENCE_FIELD = /(?:^id$|(?:item|ref|source|target)[A-Z_ -]*id$)/i;
 const REVISION_FIELD = /revision/i;
 const BASE_MUTATION_VERBS = [
@@ -204,11 +204,11 @@ function buildAffirmativeWriteIntent(
     for (const synonym of synonyms.get(verb) ?? []) verbs.add(synonym);
   }
   const alternatives = [...verbs].sort((left, right) => right.length - left.length).join('|');
-  const clauseStart = String.raw`(?:^\s*|[.!?;]\s*|\b(?:and|then)\s+)`;
+  const clauseStart = String.raw`(?:^\s*|[.!?;]\s*|\b(?:and|but|then)\s+)`;
   const politePrefix = String.raw`(?:(?:please(?:,|\s)+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+need\s+(?:you\s+)?to\s+)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?`;
   // `nothing`, `no`, and `not` negate the command. `move on` is an idiom,
   // not a request to invoke a move tool.
-  const negativeObjectOrIdiom = String.raw`(?!\s+(?:no|not|nothing|on)\b)`;
+  const negativeObjectOrIdiom = String.raw`(?!\s+(?:not|nothing)\b)(?!\s+no(?![\w-]))(?!\s+on\b)(?!\s+to\s+(?:the\s+)?next\s+step\b)`;
   return new RegExp(
     `${clauseStart}${politePrefix}(?:just\\s+)?(?:${alternatives})\\b${negativeObjectOrIdiom}`,
     'i',

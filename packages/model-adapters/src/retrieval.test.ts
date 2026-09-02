@@ -139,6 +139,8 @@ describe('deterministic tool retrieval', () => {
     ['I need you to drop the item without changing anything else.', 'remove_itinerary_item'],
     ['Please reschedule the item without changing anything else.', 'move_itinerary_item'],
     ['Could you shift the item without changing anything else?', 'move_itinerary_item'],
+    ['Do not remove anything, but remove the existing item.', 'remove_itinerary_item'],
+    ['Remove the no-show stay without changing anything else.', 'remove_itinerary_item'],
   ])('recognizes polite and synonym mutation clauses in %s', (goal, expected) => {
     const selected = createDeterministicToolSelector({
       maxTools: 4,
@@ -159,7 +161,9 @@ describe('deterministic tool retrieval', () => {
 
   it.each([
     ['Update nothing; just read the itinerary without changing anything.'],
+    ['Update nothing; just read the itinerary.'],
     ['Do not change anything. Just show me the plan and then move on to the next step.'],
+    ['Do not change anything. Just show me the plan and then shift to the next step.'],
     ['Please do not remove anything; just read the itinerary.'],
   ])('does not treat negated writes or move-on idioms as affirmative in %s', (goal) => {
     const selected = createDeterministicToolSelector({ maxTools: 5 })({
