@@ -11,6 +11,9 @@
     // separate `tsc -p` invocation outside that project graph. Node resolution
     // would look for a `dist` that only exists after a build has run.
     "paths": {
+      "@webmcp-loom/model-adapters/retrieval": [
+        "../packages/model-adapters/src/retrieval.ts"
+      ],
       "@webmcp-loom/runtime": [
         "../packages/runtime/src/index.ts"
       ]

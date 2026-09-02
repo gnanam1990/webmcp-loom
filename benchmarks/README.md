@@ -60,10 +60,18 @@ After `npm run build`, run a small local smoke probe like this:
 
 ```bash
 WEBMCP_OLLAMA_MODEL=qwen3:0.6b \
+WEBMCP_BENCHMARK_SOURCE_REVISION="$(git rev-parse HEAD)" \
 WEBMCP_BENCHMARK_ATTEMPTS=1 \
 WEBMCP_BENCHMARK_TASK_IDS=smoke-read-constraints \
 npm run benchmark:ollama
 ```
+
+The script applies `travel-deterministic-v1` to the actual runtime calls and
+records its numeric version, tool cap and the required exact source revision in
+every attempt, the batch and the top-level local report. A missing or abbreviated
+source revision fails before model inspection, so an unbound retrieval run cannot
+be mistaken for reproducible evidence. Historical v1 reports remain readable and
+are not retroactively attributed to this profile.
 
 That probe is explicitly exploratory. A report is selection-eligible only if
 it runs all 30 tasks three times and supplies both JSON objects below:

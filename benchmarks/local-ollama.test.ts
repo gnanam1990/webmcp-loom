@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createScriptedModel } from '../apps/travel-showcase/src/app/scripted-model.js';
+import { createTravelToolSelector, TRAVEL_RETRIEVAL_PROFILE } from '../apps/travel-showcase/src/retrieval.js';
 import {
   evaluateLocalSelectionReadiness,
   runLocalOllamaBenchmark,
@@ -33,6 +34,11 @@ const MEMORY = {
   samplingIntervalMs: 100,
 } as const;
 
+const RETRIEVAL_PROFILE = {
+  ...TRAVEL_RETRIEVAL_PROFILE,
+  sourceRevision: 'c'.repeat(40),
+} as const;
+
 describe('local Ollama benchmark assembly', () => {
   it('records local artifact provenance and labels a small run exploratory', async () => {
     const tasks = SMOKE_TASKS.filter(({ id }) => id === 'smoke-read-constraints');
@@ -41,6 +47,10 @@ describe('local Ollama benchmark assembly', () => {
       baseUrl: 'http://127.0.0.1:11434',
       model: 'test-local-model',
       now: () => new Date('2026-09-01T00:00:00.000Z'),
+      retrieval: {
+        profile: RETRIEVAL_PROFILE,
+        toolSelector: createTravelToolSelector(),
+      },
       tasks,
     }, {
       createModel: () => createScriptedModel([
@@ -54,9 +64,12 @@ describe('local Ollama benchmark assembly', () => {
       batch: { model: { backend: 'local', identifier: 'test-local-model', quantization: 'Q4_K_M' } },
       generatedAt: '2026-09-01T00:00:00.000Z',
       provenance: PROVENANCE,
+      retrievalProfile: RETRIEVAL_PROFILE,
       selection: { eligible: false },
-      version: 1,
+      version: 2,
     });
+    expect(report.batch.retrievalProfile).toEqual(RETRIEVAL_PROFILE);
+    expect(report.batch.results[0]?.retrievalProfile).toEqual(RETRIEVAL_PROFILE);
     expect(report.selection.blockers).toEqual(expect.arrayContaining([
       'at least 30 deterministic tasks are required',
       'at least three attempts per task are required',

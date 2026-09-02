@@ -1,8 +1,15 @@
 import { runBenchmarkTask } from './runner.js';
-import type { BenchmarkModelDescriptor, BenchmarkResult, BenchmarkTask } from './schema.js';
+import { assertValidBenchmarkRetrievalProfile } from './schema.js';
+import type { BenchmarkRetrievalConfiguration } from './runner.js';
+import type {
+  BenchmarkModelDescriptor,
+  BenchmarkResult,
+  BenchmarkRetrievalProfile,
+  BenchmarkTask,
+} from './schema.js';
 import type { AgentApprovalRequest, RuntimeModel } from '@webmcp-loom/runtime';
 
-export const BENCHMARK_BATCH_VERSION = 1 as const;
+export const BENCHMARK_BATCH_VERSION = 2 as const;
 
 export interface BenchmarkBatchOptions {
   approve?: (request: AgentApprovalRequest) => boolean | Promise<boolean>;
@@ -10,6 +17,7 @@ export interface BenchmarkBatchOptions {
   createModel: (task: BenchmarkTask, attempt: number) => RuntimeModel;
   model: BenchmarkModelDescriptor;
   now?: () => Date;
+  retrieval?: BenchmarkRetrievalConfiguration;
   tasks: readonly BenchmarkTask[];
 }
 
@@ -25,9 +33,10 @@ export interface BenchmarkBatchSummary {
 
 export interface BenchmarkBatchReport {
   model: BenchmarkModelDescriptor;
+  retrievalProfile?: BenchmarkRetrievalProfile;
   results: readonly BenchmarkResult[];
   summary: BenchmarkBatchSummary;
-  version: typeof BENCHMARK_BATCH_VERSION;
+  version: 1 | typeof BENCHMARK_BATCH_VERSION;
 }
 
 /** Runs every supplied task the same number of times without hiding failures. */
@@ -36,6 +45,9 @@ export async function runBenchmarkBatch(options: BenchmarkBatchOptions): Promise
     throw new Error('attemptsPerTask must be a positive integer.');
   }
   if (options.tasks.length === 0) throw new Error('At least one benchmark task is required.');
+  if (options.retrieval !== undefined) {
+    assertValidBenchmarkRetrievalProfile(options.retrieval.profile);
+  }
 
   const results: BenchmarkResult[] = [];
   for (const task of options.tasks) {
@@ -45,12 +57,14 @@ export async function runBenchmarkBatch(options: BenchmarkBatchOptions): Promise
         model: options.createModel(task, attempt),
         modelDescriptor: options.model,
         ...(options.now === undefined ? {} : { now: options.now }),
+        ...(options.retrieval === undefined ? {} : { retrieval: options.retrieval }),
         task,
       }));
     }
   }
   return {
     model: options.model,
+    ...(options.retrieval === undefined ? {} : { retrievalProfile: options.retrieval.profile }),
     results,
     summary: summarizeBenchmarkResults(results),
     version: BENCHMARK_BATCH_VERSION,
