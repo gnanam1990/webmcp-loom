@@ -98,7 +98,7 @@ describe('deterministic tool retrieval', () => {
   it('returns no tools for a read-only request on a write-only surface', () => {
     const selected = createDeterministicToolSelector({ maxTools: 4 })({
       goal: 'Show the current state but do not change anything.',
-      history: [],
+      history: history({ revision: 1, items: [{ id: 'item-1' }] }, 'get_itinerary'),
       stateRevision: 1,
       step: 1,
       tools: tools.slice(2),
@@ -164,6 +164,7 @@ describe('deterministic tool retrieval', () => {
     ['Update nothing; just read the itinerary.'],
     ['Do not change anything. Just show me the plan and then move on to the next step.'],
     ['Do not change anything. Just show me the plan and then shift to the next step.'],
+    ['Do not change anything, but remove is unnecessary.'],
     ['Please do not remove anything; just read the itinerary.'],
   ])('does not treat negated writes or move-on idioms as affirmative in %s', (goal) => {
     const selected = createDeterministicToolSelector({ maxTools: 5 })({

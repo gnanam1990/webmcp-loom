@@ -87,15 +87,19 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
     if (last === 'search_stays') return ['add_itinerary_item', 'search_stays', 'get_itinerary'];
   }
 
-  const scopedPlan = mentions(/\b(?:build|prepare|plan)\s+(?:(?:a|an|my|our|the|this)\s+)?(?:activit|experience|flight|hotel|stay)\w*\b/);
-  const wantsPlan = !scopedPlan
-    && mentions(/\b(?:build|prepare|plan)\b.{0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
   const wantsActivity = mentions(/\b(activit|culture|experience)\w*\b/);
-  const wantsStay = wantsPlan || mentions(/\b(stay|hotel|accommodation|lodging)\w*\b/);
-  const wantsFlight = wantsPlan || mentions(/\b(flight|fly|airfare|outbound|return|red[- ]?eye)\w*\b/);
+  const explicitStay = mentions(/\b(stay|hotel|accommodation|lodging)\w*\b/);
+  const explicitFlight = mentions(/\b(flight|fly|airfare|outbound|return|red[- ]?eye)\w*\b/);
+  const planningVerb = mentions(/\b(build|prepare|plan)\b/);
+  const explicitDomainCount = [wantsActivity, explicitStay, explicitFlight].filter(Boolean).length;
+  const fullTripPlan = planningVerb
+    && mentions(/\b(?:build|prepare|plan)\b.{0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
+  const multiDomainPlan = planningVerb && explicitDomainCount > 1;
+  const wantsStay = fullTripPlan || explicitStay;
+  const wantsFlight = fullTripPlan || explicitFlight;
   const wantsBudget = mentions(/\b(budget|cap|cost|price|spend|left)\w*\b/);
 
-  if (wantsPlan && wantsFlight && wantsStay) {
+  if ((fullTripPlan || multiDomainPlan) && wantsFlight && wantsStay) {
     if (!has('get_trip_constraints')) {
       return ['get_trip_constraints', 'search_flights', 'search_stays', 'list_destinations'];
     }
@@ -134,12 +138,24 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
 
 function hasExplicitItemRemoval(goal: string): boolean {
   const normalized = goal.toLowerCase();
-  if (!/\b(remove|delete|drop)\b/.test(normalized)) return false;
   if (/\bclose\s+(?:(?:my|our|the|this)\s+)?account\b/.test(normalized)) return false;
-  if (/\b(?:remove|delete|drop)\s+(?:(?:my|our|the|this)\s+)?(?:(?:all|entire|whole)\s+)?(?:account|itinerary|trip)\b/.test(normalized)) {
-    return false;
+  const clauses = normalized.split(/(?:[.!?;]|\bbut\b|\bthen\b)/);
+  for (const clause of clauses) {
+    const command = clause.trim().replace(
+      /^(?:(?:please,?\s+)|(?:(?:can|could|will|would)\s+you\s+(?:please\s+)?)|(?:i\s+need\s+(?:you\s+)?to\s+)|(?:i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to\s+)|(?:help\s+me\s+(?:to\s+)?))?(?:just\s+)?/,
+      '',
+    );
+    const match = /^(?:remove|delete|drop)\b\s+(.+)$/.exec(command);
+    if (match === null) continue;
+    const target = match[1];
+    if (target === undefined) continue;
+    if (/^(?:all|both|every|multiple|no|not|nothing|several|two|three|\d+)\b/.test(target)) continue;
+    if (/^(?:(?:my|our|the|this)\s+)?(?:(?:all|entire|whole)\s+)?(?:account|itinerary|trip)\b(?!\s+item\b)/.test(target)) continue;
+    if (/\b(?:items|flights|stays|hotels|accommodations|lodgings|activities|experiences)\b/.test(target)) continue;
+    const singularTargets = target.match(/\b(?:itinerary\s+item|trip\s+item|item|flight|stay|hotel|accommodation|lodging|activity|experience)\b/g) ?? [];
+    if (singularTargets.length === 1) return true;
   }
-  return /\b(item|flight|stay|hotel|accommodation|lodging|activity|experience)\w*\b/.test(normalized);
+  return false;
 }
 
 function uniqueNames(names: readonly string[]): string[] {

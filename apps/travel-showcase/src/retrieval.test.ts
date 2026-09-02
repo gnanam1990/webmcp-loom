@@ -54,6 +54,28 @@ describe('travel retrieval profile', () => {
     expect(selected).not.toContain(excluded);
   });
 
+  it('keeps a multi-domain planning request on the full planning workflow', () => {
+    const selected = createTravelToolSelector()({
+      ...context(),
+      goal: 'Plan a flight and hotel stay for this trip.',
+    });
+
+    expect(selected).toEqual(expect.arrayContaining([
+      'get_trip_constraints',
+      'search_flights',
+      'search_stays',
+    ]));
+  });
+
+  it.each([
+    ['Plan a flight and cultural activity.', 'search_stays'],
+    ['Plan a hotel stay and cultural activity.', 'search_flights'],
+  ])('does not invent an unmentioned domain for %s', (request, excluded) => {
+    const selected = createTravelToolSelector()({ ...context(), goal: request });
+
+    expect(selected).not.toContain(excluded);
+  });
+
   it.each([
     'Delete the whole trip.',
     'Delete the whole trip including every hotel stay.',
@@ -72,6 +94,44 @@ describe('travel retrieval profile', () => {
     });
 
     expect(selected).not.toContain('remove_itinerary_item');
+  });
+
+  it.each([
+    'Do not remove the staged stay.',
+    'Remove all staged stays.',
+    'Delete both itinerary items.',
+  ])('does not expose singular removal for negated or plural intent: %s', (request) => {
+    const selected = createTravelToolSelector()({
+      ...context([{
+        step: 1,
+        tool: 'get_itinerary',
+        input: {},
+        ok: true,
+        output: { revision: 4, items: [{ id: 'item-2', kind: 'stay' }] },
+      }]),
+      goal: request,
+    });
+
+    expect(selected).not.toContain('remove_itinerary_item');
+  });
+
+  it.each([
+    'Remove the itinerary item.',
+    'Please delete the staged Tokyo stay.',
+    'I need you to drop the trip item.',
+  ])('recognizes a singular item-removal command: %s', (request) => {
+    const selected = createTravelToolSelector()({
+      ...context([{
+        step: 1,
+        tool: 'get_itinerary',
+        input: {},
+        ok: true,
+        output: { revision: 4, items: [{ id: 'item-2', kind: 'stay' }] },
+      }]),
+      goal: request,
+    });
+
+    expect(selected[0]).toBe('remove_itinerary_item');
   });
 
   it('admits staging after a search returns a reusable id and revision', () => {
