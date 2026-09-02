@@ -89,13 +89,13 @@ function travelPriorities(context: RuntimeToolSelectorContext): readonly string[
     if (last === 'search_stays') return ['add_itinerary_item', 'search_stays', 'get_itinerary'];
   }
 
-  const wantsActivity = mentions(/\b(activit|culture|experience)\w*\b/);
+  const wantsActivity = mentions(/\b(activit|cultur|experience)\w*\b/);
   const explicitStay = mentions(/\b(stay|hotel|accommodation|lodging)\w*\b/);
   const explicitFlight = mentions(/\b(flight|fly|airfare|outbound|return|red[- ]?eye)\w*\b/);
   const planningVerb = mentions(/\b(build|prepare|plan)\b/);
   const explicitDomainCount = [wantsActivity, explicitStay, explicitFlight].filter(Boolean).length;
   const fullTripPlan = planningVerb
-    && mentions(/\b(?:build|prepare|plan)\b(?:(?!\b(?:activit|culture|experience|flight|fly|airfare|outbound|return|red[- ]?eye|stay|hotel|accommodation|lodging)\w*\b).){0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
+    && mentions(/\b(?:build|prepare|plan)\b(?:(?!\b(?:activit|cultur|experience|flight|fly|airfare|outbound|return|red[- ]?eye|stay|hotel|accommodation|lodging)\w*\b).){0,48}\b(?:holiday|itinerary|journey|tour|trip|vacation)\b/);
   const multiDomainPlan = planningVerb && explicitDomainCount > 1;
   const wantsStay = fullTripPlan || explicitStay;
   const wantsFlight = fullTripPlan || explicitFlight;

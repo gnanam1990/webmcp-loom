@@ -69,6 +69,17 @@ describe('travel retrieval profile', () => {
     expect(selected).not.toContain('search_stays');
   });
 
+  it('treats a cultural trip as activity-scoped rather than a full-trip workflow', () => {
+    const selected = createTravelToolSelector()({
+      ...context(),
+      goal: 'Plan a cultural trip.',
+    });
+
+    expect(selected[0]).toBe('search_activities');
+    expect(selected).not.toContain('search_flights');
+    expect(selected).not.toContain('search_stays');
+  });
+
   it('keeps a multi-domain planning request on the full planning workflow', () => {
     const selected = createTravelToolSelector()({
       ...context(),
