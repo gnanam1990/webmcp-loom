@@ -27,9 +27,10 @@ export type WebMcpStatus = 'registered' | 'unsupported' | 'failed';
 /** How long a change stays marked before the cue fades on its own. */
 const HIGHLIGHT_MILLISECONDS = 2_600;
 
-export function App({ session, webmcp = 'unsupported' }: {
+export function App({ session, webmcp = 'unsupported', onRetryBackend }: {
   session: Session;
   webmcp?: WebMcpStatus;
+  onRetryBackend?: () => void;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [goal, setGoal] = useState(HERO_GOAL);
@@ -107,6 +108,11 @@ export function App({ session, webmcp = 'unsupported' }: {
           {!busy && planned && (
             <button type="button" className="button" onClick={() => setGoal(REPAIR_GOAL)}>
               Use the rework goal
+            </button>
+          )}
+          {!busy && snapshot.backend.status === 'failed' && onRetryBackend !== undefined && (
+            <button type="button" className="button" onClick={onRetryBackend}>
+              Retry local model
             </button>
           )}
           <Undo undoable={snapshot.undoable} onUndo={session.undo} />

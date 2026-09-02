@@ -573,4 +573,51 @@ describe('backend indicator state', () => {
     expect(backend.status).toBe('failed');
     expect(backend.status === 'failed' && backend.error).toMatch(/WebGPU/);
   });
+
+  it('reconfigures the model without replacing the canonical trip state', async () => {
+    const session = createSession();
+    const before = session.getSnapshot().trip;
+    const descriptor = {
+      id: 'browser-local',
+      kind: 'local' as const,
+      label: 'Browser-local model',
+      detail: 'WebGPU test backend.',
+    };
+
+    session.configureBackend({ status: 'loading', backend: descriptor });
+    expect(session.getSnapshot()).toMatchObject({
+      backend: { status: 'loading' },
+      trip: { revision: before.revision, items: before.items },
+    });
+
+    session.configureBackend({ status: 'ready', backend: descriptor }, () => ({
+      generate: async () => JSON.stringify({ type: 'final', message: 'Local model ready.' }),
+    }));
+    await session.run('Use the loaded model.');
+
+    expect(session.getSnapshot()).toMatchObject({
+      backend: { status: 'ready', backend: { kind: 'local' } },
+      note: 'Local model ready.',
+      status: 'completed',
+      trip: { revision: before.revision, items: before.items },
+    });
+  });
+
+  it('refuses to swap the model during an active approval', async () => {
+    const session = createSession();
+    let attempted = false;
+    session.subscribe(() => {
+      if (session.getSnapshot().status !== 'awaiting_approval' || attempted) return;
+      attempted = true;
+      expect(() => session.configureBackend({
+        status: 'loading',
+        backend: { id: 'next', kind: 'local', label: 'Next', detail: 'Loading.' },
+      })).toThrow('Cannot replace the model backend while the agent is working.');
+      session.deny();
+    });
+
+    await session.run('Prepare the trip.');
+    expect(attempted).toBe(true);
+    expect(session.getSnapshot().backend.backend.kind).toBe('scripted');
+  });
 });
