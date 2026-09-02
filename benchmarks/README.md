@@ -92,6 +92,14 @@ identifier-reuse, approval and recovery gates. The raw and measured JSON files
 are committed beside the summary, and a test proves that attaching the sampled
 memory value changed no retained attempt evidence.
 
+The retrieval-assisted comparison is documented in
+[`results/qwen3-0.6b-retrieval-30x3-2026-09-02.md`](results/qwen3-0.6b-retrieval-30x3-2026-09-02.md).
+It binds `travel-deterministic-v1`, the exact merged source revision and the
+same Ollama artifact to every attempt. Schema-valid decisions improved to
+100%, but complete task success and identifier reuse remained 0%, so the model
+is still **ineligible**. That run intentionally makes no current memory claim;
+its correctness and safety failures already block selection independently.
+
 ## Foundation verification
 
 The root verification command typechecks this directory. To repeat only its

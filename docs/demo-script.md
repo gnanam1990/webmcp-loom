@@ -44,8 +44,11 @@ and no automatic retry after an ambiguous write failure.
 ## 2:45–3:00 — Honest next evidence
 
 Close with: “The runtime proof and second fixture are complete on the reviewed
-head. Local-model selection and benchmark reporting remain separate evidence
-tracks; we will publish them only with reproducible results.”
+head. We published both pre-retrieval and retrieval-assisted Qwen3 0.6B runs;
+the latter reached full decision validity but passed zero complete tasks, so
+the model is rejected. Another local candidate or cloud parity needs the same
+reproducible correctness and safety gates before it can replace the scripted
+showcase.”
 
 ## Capture checklist
 

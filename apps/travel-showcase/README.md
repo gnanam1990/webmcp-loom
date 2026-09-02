@@ -77,9 +77,12 @@ a write. The profile then caps the model-visible surface at four tools.
 
 This changes prompt size, not authority. All ten tools remain in the page-owned
 registry, the runtime refreshes that registry before execution, and canonical
-schema, approval and stale-state checks still apply. The profile id is exported
-so a future retrieval-assisted benchmark can bind the exact configuration to
-its report. Existing committed local-model evidence did not use this profile.
+schema, approval and stale-state checks still apply. The profile id and version
+are exported so a retrieval-assisted benchmark can bind the exact configuration
+to its report. The first retained Qwen result predates the profile; the
+subsequent 30-by-3 report binds it to every attempt and still records zero
+complete task passes. Retrieval is therefore implemented and measured, but it
+does not select that model.
 
 Schemas stay inside the runtime's bounded JSON Schema subset. A test asserts this, because a keyword the runtime does not support fails closed at registration rather than degrading quietly.
 
