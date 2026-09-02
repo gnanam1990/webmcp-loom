@@ -93,6 +93,27 @@ describe('deterministic benchmark runner', () => {
       metrics: { decisionCount: 0 },
       outcome: 'runtime_error',
     });
+    expect(result.retrievalProfile).toBeUndefined();
+  });
+
+  it('classifies a missing retrieval id without echoing malformed metadata', async () => {
+    const result = await runBenchmarkTask({
+      model: createScriptedModel([]),
+      modelDescriptor: MODEL,
+      now: clock(),
+      retrieval: {
+        profile: { ...RETRIEVAL_PROFILE, id: undefined },
+        toolSelector: createTravelToolSelector(),
+      } as unknown as NonNullable<Parameters<typeof runBenchmarkTask>[0]['retrieval']>,
+      task: task('smoke-read-constraints'),
+    });
+
+    expect(result).toMatchObject({
+      failure: { category: 'configuration', code: 'missing_profile' },
+      metrics: { decisionCount: 0 },
+      outcome: 'runtime_error',
+    });
+    expect(result.retrievalProfile).toBeUndefined();
   });
 
   it('bounds an oversized selector result to the recorded profile cap', async () => {

@@ -120,5 +120,11 @@ describe('benchmark foundation', () => {
       .toThrow('integer from 1 to 20');
     expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, sourceRevision: 'abc123' }))
       .toThrow('exact 40-character Git commit');
+    expect(() => assertValidBenchmarkRetrievalProfile({ ...profile, sourceRevision: '0'.repeat(40) }))
+      .toThrow('exact 40-character Git commit');
+    expect(() => assertValidBenchmarkRetrievalProfile({
+      ...profile,
+      id: undefined,
+    } as unknown as typeof profile)).toThrow('id is required');
   });
 });

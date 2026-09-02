@@ -196,14 +196,19 @@ export interface BenchmarkResult {
 
 /** Rejects incomplete retrieval provenance before a model is invoked. */
 export function assertValidBenchmarkRetrievalProfile(profile: BenchmarkRetrievalProfile): void {
-  if (!profile.id.trim()) throw new Error('Retrieval profile id is required.');
+  if (typeof profile !== 'object' || profile === null) {
+    throw new Error('Retrieval profile is required.');
+  }
+  if (typeof profile.id !== 'string' || !profile.id.trim()) {
+    throw new Error('Retrieval profile id is required.');
+  }
   if (!Number.isInteger(profile.version) || profile.version < 1) {
     throw new Error('Retrieval profile version must be a positive integer.');
   }
   if (!Number.isInteger(profile.maxTools) || profile.maxTools < 1 || profile.maxTools > 20) {
     throw new Error('Retrieval profile maxTools must be an integer from 1 to 20.');
   }
-  if (!/^[0-9a-f]{40}$/i.test(profile.sourceRevision)) {
+  if (!/^(?!0{40}$)[0-9a-f]{40}$/i.test(profile.sourceRevision)) {
     throw new Error('Retrieval profile sourceRevision must be an exact 40-character Git commit.');
   }
 }

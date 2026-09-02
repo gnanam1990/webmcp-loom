@@ -444,7 +444,9 @@ function configurationResult(
     },
     model: options.modelDescriptor,
     outcome: 'runtime_error',
-    ...(options.retrieval === undefined ? {} : { retrievalProfile: options.retrieval.profile }),
+    ...(options.retrieval === undefined || code === 'missing_profile'
+      ? {}
+      : { retrievalProfile: options.retrieval.profile }),
     startedAt: startedAt.toISOString(),
     taskId: options.task.id,
     toolCalls: [],
