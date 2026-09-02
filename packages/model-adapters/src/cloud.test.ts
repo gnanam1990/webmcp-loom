@@ -87,6 +87,8 @@ describe('createOpenAiCompatibleCloudRuntimeModel', () => {
     ['embedded credentials', 'https://user:pass@models.example.test/v1/chat/completions', 'must not contain credentials'],
     ['fragment', 'https://models.example.test/v1/chat/completions#secret', 'must not contain a fragment'],
     ['credential query', 'https://models.example.test/v1/chat/completions?api_key=fixture', 'credential query parameters'],
+    ['camel-case token query', 'https://models.example.test/v1/chat/completions?authToken=fixture', 'credential query parameters'],
+    ['generic key query', 'https://models.example.test/v1/chat/completions?key=fixture', 'credential query parameters'],
   ])('rejects a %s endpoint before a request is possible', (_label, endpoint, message) => {
     expect(() => createOpenAiCompatibleCloudRuntimeModel({
       endpoint,

@@ -8,7 +8,6 @@ const MAX_CREDENTIAL_HEADERS = 32;
 const MAX_CREDENTIAL_HEADER_NAME_CHARACTERS = 128;
 const MAX_CREDENTIAL_HEADER_VALUE_CHARACTERS = 8_192;
 const MAX_CREDENTIAL_HEADERS_CHARACTERS = 32_768;
-const SENSITIVE_QUERY_NAME = /(?:^|[-_])(api[-_]?key|auth|credential|password|secret|signature|token)(?:$|[-_])/i;
 const FORBIDDEN_CREDENTIAL_HEADERS = new Set([
   'accept',
   'connection',
@@ -277,11 +276,22 @@ function validateEndpoint(value: string): string {
   }
   if (endpoint.hash) throw new Error('endpoint must not contain a fragment.');
   for (const name of endpoint.searchParams.keys()) {
-    if (SENSITIVE_QUERY_NAME.test(name)) {
+    if (isSensitiveQueryName(name)) {
       throw new Error('endpoint must not contain credential query parameters.');
     }
   }
   return endpoint.href;
+}
+
+function isSensitiveQueryName(value: string): boolean {
+  const normalized = value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return /^(?:(?:api|access|private|secret)?key)$/.test(normalized)
+    || normalized.includes('auth')
+    || normalized.includes('credential')
+    || normalized.includes('password')
+    || normalized.includes('secret')
+    || normalized.includes('signature')
+    || normalized.includes('token');
 }
 
 function buildHeaders(values: Readonly<Record<string, string>>): Record<string, string> {
