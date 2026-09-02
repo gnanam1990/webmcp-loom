@@ -537,8 +537,9 @@ describe('backend indicator state', () => {
     const session = createSession(store, undefined, {
       status: 'loading',
       backend: { id: 'local-qwen', kind: 'local', label: 'Local · Qwen 1.5B', detail: 'Loading model weights.' },
+      progress: 0.42,
     });
-    expect(session.getSnapshot().backend).toMatchObject({ status: 'loading' });
+    expect(session.getSnapshot().backend).toMatchObject({ status: 'loading', progress: 0.42 });
   });
 
   it('does not begin a scripted run while its selected backend is loading or failed', async () => {

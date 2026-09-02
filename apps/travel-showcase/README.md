@@ -12,6 +12,7 @@ The deterministic Japan travel domain, collaborative application, shared state, 
 - a responsive itinerary, budget, trace and visible-approval interface;
 - one application factory that hands the same store and tool array to the in-app runtime and document WebMCP registration;
 - undo, a visible execution-backend indicator, and application-native highlights;
+- an opt-in WebGPU/WebLLM backend loader with visible progress, clear failure and retry states;
 - deterministic domain, collaboration, accessibility-helper and WebMCP integration tests.
 
 ## Shared state and revisions
@@ -66,6 +67,27 @@ Seven read tools, three write tools.
 Write tools carry `readOnlyHint: false`, so the runtime pauses each one for visible human approval.
 
 Schemas stay inside the runtime's bounded JSON Schema subset. A test asserts this, because a keyword the runtime does not support fails closed at registration rather than degrading quietly.
+
+## Browser-local model probe
+
+The production build keeps the multi-megabyte WebLLM engine out of the normal
+scripted path. To load one explicit model artifact, append its registered
+WebLLM id to the preview URL:
+
+```text
+?localModel=Qwen3-0.6B-q4f16_1-MLC
+```
+
+This is a probe path, not a selected default. It requires WebGPU and downloads
+the requested model assets through `@mlc-ai/web-llm`; the browser may cache
+those assets for later loads. The interface reports loading progress, prevents
+runs until the backend is ready, and offers a retry after a clear load failure.
+It never falls back to a proprietary inference service.
+
+Loading successfully proves only adapter and browser compatibility. Model
+selection still requires the complete deterministic corpus, repeated attempts,
+identifier-reuse and safety assertions, latency, memory and exact artifact
+provenance described in `benchmarks/model-matrix.md`.
 
 ## Safety boundary
 

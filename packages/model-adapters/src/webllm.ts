@@ -5,6 +5,8 @@ interface WebLlmCompletion {
   choices: readonly { message?: { content?: unknown } }[];
 }
 
+const EMPTY_THINKING_PREFIX = /^\s*<think>\s*<\/think>\s*/;
+
 export interface WebLlmRuntimeModelOptions {
   /** Maximum time to wait for an interrupted engine to become safe to reuse. */
   cancellationTimeoutMs?: number;
@@ -62,7 +64,11 @@ export async function createWebLlmRuntimeModel(
         if (typeof content !== 'string') {
           throw new Error('WebLLM returned no assistant message content.');
         }
-        return content;
+        // Some Qwen WebLLM templates emit an empty thinking transport block
+        // even when `enable_thinking` is false. Remove only that empty prefix;
+        // non-empty reasoning, fences, prose and malformed JSON still reach the
+        // runtime unchanged and therefore fail its strict decision parser.
+        return content.replace(EMPTY_THINKING_PREFIX, '');
       });
       generationTail = scheduled.then(({ drain }) => drain).catch((error: unknown) => {
         if (error instanceof WebLlmCancellationTimeoutError) terminalFailure = error;

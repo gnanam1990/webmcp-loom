@@ -202,7 +202,8 @@ function Backend({ state, webmcp }: {
       <span className="backend__label">{state.backend.label}</span>
       <span className="backend__state">
         {state.status === 'ready' ? 'ready'
-          : state.status === 'loading' ? 'loading…'
+          : state.status === 'loading'
+            ? `loading${state.progress === undefined ? '…' : ` · ${Math.round(state.progress * 100)}%`}`
             : `unavailable — ${state.error}`}
       </span>
       <span className="backend__sep" aria-hidden="true">·</span>

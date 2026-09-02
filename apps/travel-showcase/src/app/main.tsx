@@ -41,7 +41,17 @@ const requestedLocalModel = new URLSearchParams(window.location.search).get('loc
 function startBrowserLocalModel(): void {
   if (requestedLocalModel === null) return;
   application.session.configureBackend({ status: 'loading', backend: BROWSER_LOCAL_BACKEND });
-  void loadBrowserLocalModel({ model: requestedLocalModel }).then(
+  void loadBrowserLocalModel({
+    model: requestedLocalModel,
+    onLoadProgress: ({ progress }) => {
+      if (!Number.isFinite(progress)) return;
+      application.session.configureBackend({
+        status: 'loading',
+        backend: BROWSER_LOCAL_BACKEND,
+        progress: Math.min(1, Math.max(0, progress)),
+      });
+    },
+  }).then(
     (model) => {
       application.session.configureBackend(
         { status: 'ready', backend: BROWSER_LOCAL_BACKEND },

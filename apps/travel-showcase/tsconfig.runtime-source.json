@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "paths": {
+      "@webmcp-loom/model-adapters": [
+        "../../packages/model-adapters/src/index.ts"
+      ],
       "@webmcp-loom/runtime": [
         "../../packages/runtime/src/index.ts"
       ]

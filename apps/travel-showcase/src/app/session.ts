@@ -65,7 +65,7 @@ export interface BackendDescriptor {
  */
 export type BackendState =
   | { status: 'failed'; backend: BackendDescriptor; error: string }
-  | { status: 'loading'; backend: BackendDescriptor }
+  | { status: 'loading'; backend: BackendDescriptor; progress?: number }
   | { status: 'ready'; backend: BackendDescriptor };
 
 export const SCRIPTED_BACKEND: BackendDescriptor = Object.freeze({
