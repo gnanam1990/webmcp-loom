@@ -44,8 +44,9 @@ which removes the missing-memory blocker. A repository test proves that no
 attempt, assertion, metric, provenance field, or other run output changed.
 The per-sample RSS time series was not retained, so the committed files cannot
 independently reconstruct the peak from every sample; they retain the sampling
-method, interval and measured peak. That limitation must be removed before a
-future otherwise-passing result is used as final selection evidence. It does
+method, interval and measured peak. The v1 selection gate intentionally treats
+those three fields as sufficient, so the missing series is a non-gating
+auditability limitation rather than an additional selection blocker. It does
 not rescue or weaken this run's ineligible verdict because this model passes
 the memory budget and fails correctness and safety gates independently.
 
