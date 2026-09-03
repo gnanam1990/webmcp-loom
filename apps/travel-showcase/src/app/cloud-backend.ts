@@ -45,6 +45,7 @@ export function createTravelCloudBackend(
   });
 }
 
+/** Bounds host-provided copy before it reaches the always-visible backend indicator. */
 function normalizeLabel(value: string | undefined): string {
   if (value === undefined) return DEFAULT_LABEL;
   const label = value.trim();
