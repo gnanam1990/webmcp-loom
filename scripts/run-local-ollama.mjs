@@ -5,6 +5,7 @@ import { platform, arch, release } from 'node:os';
 import { SMOKE_TASKS } from '../benchmarks/smoke-tasks.ts';
 import { TRAVEL_TASKS } from '../benchmarks/travel-tasks.ts';
 import { runLocalOllamaBenchmark } from '../benchmarks/local-ollama.ts';
+import { createOllamaRssMemorySampler } from '../benchmarks/ollama-memory.ts';
 import {
   createTravelToolSelector,
   TRAVEL_RETRIEVAL_PROFILE,
@@ -12,21 +13,30 @@ import {
 import { checkedOutSourceRevision } from './source-revision.mjs';
 
 const model = required('WEBMCP_OLLAMA_MODEL');
+const baseUrl = process.env.WEBMCP_OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434';
 const attemptsPerTask = integerEnv('WEBMCP_BENCHMARK_ATTEMPTS', 3);
 const tasks = selectedTasks(process.env.WEBMCP_BENCHMARK_TASK_IDS);
 const hardware = jsonEnv('WEBMCP_BENCHMARK_HARDWARE_JSON');
 const memory = jsonEnv('WEBMCP_BENCHMARK_MEMORY_JSON');
+const memorySampler = hardware === undefined || memory !== undefined
+  ? undefined
+  : createOllamaRssMemorySampler({
+      baseUrl,
+      intervalMs: integerEnv('WEBMCP_BENCHMARK_MEMORY_INTERVAL_MS', 100),
+      model,
+    });
 const sourceRevision = checkedOutSourceRevision();
 
 const report = await runLocalOllamaBenchmark({
   attemptsPerTask,
-  baseUrl: process.env.WEBMCP_OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434',
+  baseUrl,
   ...(hardware === undefined ? {} : { hardware }),
   ...(memory === undefined ? {} : { memory }),
+  ...(memorySampler === undefined ? {} : { memorySampler }),
   model,
   modelOptions: {
     maxTokens: integerEnv('WEBMCP_OLLAMA_MAX_TOKENS', 128),
-    seed: integerEnv('WEBMCP_OLLAMA_SEED', 42),
+    seed: integerEnv('WEBMCP_OLLAMA_SEED', 42, 0),
     temperature: numberEnv('WEBMCP_OLLAMA_TEMPERATURE', 0),
   },
   retrieval: {
@@ -67,11 +77,15 @@ function required(name) {
   return value;
 }
 
-function integerEnv(name, fallback) {
+function integerEnv(name, fallback, minimum = 1) {
   const value = process.env[name];
   if (value === undefined) return fallback;
+  if (!value.trim()) throw new Error(`${name} must not be empty.`);
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${name} must be a positive integer.`);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    const range = minimum === 0 ? 'a non-negative safe integer' : 'a positive safe integer';
+    throw new Error(`${name} must be ${range}.`);
+  }
   return parsed;
 }
 

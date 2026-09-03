@@ -73,16 +73,25 @@ provenance. Historical v1 reports remain readable and are not retroactively
 attributed to this profile.
 
 That probe is explicitly exploratory. A report is selection-eligible only if
-it runs all 30 tasks three times and supplies both JSON objects below:
+it runs all 30 tasks three times, supplies the hardware object below, and uses
+either automatic loopback memory sampling or the optional manual memory object:
 
 ```text
 WEBMCP_BENCHMARK_HARDWARE_JSON={"name":"...","architecture":"...","operatingSystem":"...","latencyBudgetMs":...,"memoryBudgetBytes":...}
-WEBMCP_BENCHMARK_MEMORY_JSON={"method":"...","peakMemoryBytes":...,"samplingIntervalMs":...}
+WEBMCP_BENCHMARK_MEMORY_JSON={"method":"...","peakMemoryBytes":...,"samplingIntervalMs":...} # optional override
 ```
 
-The memory method must observe the model-serving process or browser runtime,
-not merely the caller shell. Missing, over-budget or invalid measurements remain
-selection blockers in the report.
+When hardware is declared and no memory override is supplied, the launcher
+automatically samples the combined RSS of Ollama's serving processes and adds
+the selected model's `/api/ps` VRAM allocation every 100 ms (override with
+`WEBMCP_BENCHMARK_MEMORY_INTERVAL_MS`). Including that API allocation prevents
+Metal or another GPU backend from disappearing from an RSS-only measurement.
+Automatic process sampling is restricted to loopback URLs so local RSS cannot
+be mixed with a remote server's allocation. A remote server therefore needs a
+manual memory value that observes its model-serving process or browser runtime,
+not merely the caller shell. The report also retains the exact temperature,
+seed and token cap used for every generation. Missing, over-budget or invalid
+measurements remain selection blockers in the report.
 
 The first complete retained local run is documented in
 [`results/qwen3-0.6b-ollama-30x3-2026-09-02.md`](results/qwen3-0.6b-ollama-30x3-2026-09-02.md).

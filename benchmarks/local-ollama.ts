@@ -23,7 +23,13 @@ import type { BenchmarkRetrievalConfiguration } from './runner.js';
 import type { BenchmarkRetrievalProfile } from './schema.js';
 import type { BenchmarkResult, BenchmarkTask } from './schema.js';
 
-export const LOCAL_OLLAMA_BENCHMARK_VERSION = 2 as const;
+export const LOCAL_OLLAMA_BENCHMARK_VERSION = 3 as const;
+
+export interface LocalBenchmarkDecodingSettings {
+  maxTokens: number;
+  seed: number;
+  temperature: number;
+}
 
 export interface LocalBenchmarkHardwareProfile {
   architecture: string;
@@ -40,6 +46,13 @@ export interface LocalBenchmarkMemoryMeasurement {
   samplingIntervalMs: number;
 }
 
+export interface LocalBenchmarkMemorySampler {
+  measure<T>(operation: () => Promise<T>): Promise<{
+    memory: LocalBenchmarkMemoryMeasurement;
+    value: T;
+  }>;
+}
+
 export interface LocalOllamaBenchmarkOptions {
   attemptsPerTask: number;
   baseUrl: string;
@@ -47,6 +60,8 @@ export interface LocalOllamaBenchmarkOptions {
   hardware?: LocalBenchmarkHardwareProfile;
   /** Required for selection-grade evidence; absent runs remain exploratory. */
   memory?: LocalBenchmarkMemoryMeasurement;
+  /** Samples the serving runtime around the batch; mutually exclusive with `memory`. */
+  memorySampler?: LocalBenchmarkMemorySampler;
   model: string;
   modelOptions?: Omit<OllamaRuntimeModelOptions, 'baseUrl' | 'model'>;
   now?: () => Date;
@@ -65,13 +80,14 @@ export interface LocalSelectionReadiness {
 
 export interface LocalOllamaBenchmarkReport {
   batch: BenchmarkBatchReport;
+  decoding?: LocalBenchmarkDecodingSettings;
   generatedAt: string;
   hardware?: LocalBenchmarkHardwareProfile;
   memory?: LocalBenchmarkMemoryMeasurement;
   provenance: OllamaModelProvenance;
   retrievalProfile?: BenchmarkRetrievalProfile;
   selection: LocalSelectionReadiness;
-  version: 1 | typeof LOCAL_OLLAMA_BENCHMARK_VERSION;
+  version: 1 | 2 | typeof LOCAL_OLLAMA_BENCHMARK_VERSION;
 }
 
 export interface LocalOllamaBenchmarkDependencies {
@@ -94,10 +110,15 @@ export async function runLocalOllamaBenchmark(
 ): Promise<LocalOllamaBenchmarkReport> {
   validateOptions(options);
   const provenance = await dependencies.inspectModel(options.baseUrl, options.model);
-  const report = await runBenchmarkBatch({
+  const decoding: LocalBenchmarkDecodingSettings = {
+    maxTokens: options.modelOptions?.maxTokens ?? 128,
+    seed: options.modelOptions?.seed ?? 42,
+    temperature: options.modelOptions?.temperature ?? 0,
+  };
+  const runBatch = async (): Promise<BenchmarkBatchReport> => runBenchmarkBatch({
     attemptsPerTask: options.attemptsPerTask,
     createModel: () => dependencies.createModel({
-      ...options.modelOptions,
+      ...decoding,
       baseUrl: options.baseUrl,
       model: options.model,
     }),
@@ -110,14 +131,24 @@ export async function runLocalOllamaBenchmark(
     ...(options.retrieval === undefined ? {} : { retrieval: options.retrieval }),
     tasks: options.tasks,
   });
+  const measured = options.memorySampler === undefined
+    ? { memory: options.memory, value: await runBatch() }
+    : await options.memorySampler.measure(runBatch);
+  const report = measured.value;
+  const memory = measured.memory;
+  validateMemory(memory);
   return {
     batch: report,
+    decoding,
     generatedAt: (options.now ?? (() => new Date()))().toISOString(),
     ...(options.hardware === undefined ? {} : { hardware: options.hardware }),
-    ...(options.memory === undefined ? {} : { memory: options.memory }),
+    ...(memory === undefined ? {} : { memory }),
     provenance,
     ...(options.retrieval === undefined ? {} : { retrievalProfile: options.retrieval.profile }),
-    selection: evaluateLocalSelectionReadiness(report, options),
+    selection: evaluateLocalSelectionReadiness(report, {
+      ...options,
+      ...(memory === undefined ? {} : { memory }),
+    }),
     version: LOCAL_OLLAMA_BENCHMARK_VERSION,
   };
 }
@@ -179,15 +210,35 @@ function percentile95(values: readonly number[]): number {
 function validateOptions(options: LocalOllamaBenchmarkOptions): void {
   if (!options.baseUrl.trim()) throw new Error('Ollama baseUrl is required.');
   if (!options.model.trim()) throw new Error('Ollama model is required.');
-  if (!Number.isInteger(options.attemptsPerTask) || options.attemptsPerTask < 1) {
+  if (!Number.isSafeInteger(options.attemptsPerTask) || options.attemptsPerTask < 1) {
     throw new Error('attemptsPerTask must be a positive integer.');
   }
   if (options.tasks.length === 0) throw new Error('At least one benchmark task is required.');
+  if (options.memory !== undefined && options.memorySampler !== undefined) {
+    throw new Error('Provide either a memory measurement or a memory sampler, not both.');
+  }
+  validateDecoding(options.modelOptions);
   if (options.retrieval !== undefined) {
     assertValidBenchmarkRetrievalProfile(options.retrieval.profile);
   }
   validateHardware(options.hardware);
   validateMemory(options.memory);
+}
+
+function validateDecoding(
+  decoding: Omit<OllamaRuntimeModelOptions, 'baseUrl' | 'model'> | undefined,
+): void {
+  if (decoding?.maxTokens !== undefined
+    && (!Number.isSafeInteger(decoding.maxTokens) || decoding.maxTokens <= 0)) {
+    throw new Error('modelOptions maxTokens must be a positive integer.');
+  }
+  if (decoding?.seed !== undefined && !Number.isSafeInteger(decoding.seed)) {
+    throw new Error('modelOptions seed must be an integer.');
+  }
+  if (decoding?.temperature !== undefined
+    && (!Number.isFinite(decoding.temperature) || decoding.temperature < 0)) {
+    throw new Error('modelOptions temperature must be a non-negative finite number.');
+  }
 }
 
 function validateHardware(hardware: LocalBenchmarkHardwareProfile | undefined): void {
@@ -198,7 +249,7 @@ function validateHardware(hardware: LocalBenchmarkHardwareProfile | undefined): 
   if (!Number.isFinite(hardware.latencyBudgetMs) || hardware.latencyBudgetMs <= 0) {
     throw new Error('hardware latencyBudgetMs must be positive.');
   }
-  if (!Number.isInteger(hardware.memoryBudgetBytes) || hardware.memoryBudgetBytes <= 0) {
+  if (!Number.isSafeInteger(hardware.memoryBudgetBytes) || hardware.memoryBudgetBytes <= 0) {
     throw new Error('hardware memoryBudgetBytes must be a positive integer.');
   }
 }
@@ -206,10 +257,10 @@ function validateHardware(hardware: LocalBenchmarkHardwareProfile | undefined): 
 function validateMemory(memory: LocalBenchmarkMemoryMeasurement | undefined): void {
   if (memory === undefined) return;
   if (!memory.method.trim()) throw new Error('memory measurement needs a method.');
-  if (!Number.isInteger(memory.peakMemoryBytes) || memory.peakMemoryBytes <= 0) {
+  if (!Number.isSafeInteger(memory.peakMemoryBytes) || memory.peakMemoryBytes <= 0) {
     throw new Error('memory peakMemoryBytes must be a positive integer.');
   }
-  if (!Number.isInteger(memory.samplingIntervalMs) || memory.samplingIntervalMs <= 0) {
+  if (!Number.isSafeInteger(memory.samplingIntervalMs) || memory.samplingIntervalMs <= 0) {
     throw new Error('memory samplingIntervalMs must be a positive integer.');
   }
 }
