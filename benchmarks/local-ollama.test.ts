@@ -62,11 +62,12 @@ describe('local Ollama benchmark assembly', () => {
 
     expect(report).toMatchObject({
       batch: { model: { backend: 'local', identifier: 'test-local-model', quantization: 'Q4_K_M' } },
+      decoding: { maxTokens: 128, seed: 42, temperature: 0 },
       generatedAt: '2026-09-01T00:00:00.000Z',
       provenance: PROVENANCE,
       retrievalProfile: RETRIEVAL_PROFILE,
       selection: { eligible: false },
-      version: 2,
+      version: 3,
     });
     expect(report.batch.retrievalProfile).toEqual(RETRIEVAL_PROFILE);
     expect(report.batch.results[0]?.retrievalProfile).toEqual(RETRIEVAL_PROFILE);
@@ -75,6 +76,53 @@ describe('local Ollama benchmark assembly', () => {
       'at least three attempts per task are required',
       'target hardware and latency/memory budgets were not declared',
     ]));
+  });
+
+  it('records the exact decoding settings and a sampler-owned memory peak', async () => {
+    const tasks = SMOKE_TASKS.filter(({ id }) => id === 'smoke-read-constraints');
+    const report = await runLocalOllamaBenchmark({
+      attemptsPerTask: 1,
+      baseUrl: 'http://127.0.0.1:11434',
+      hardware: HARDWARE,
+      memorySampler: {
+        measure: async (operation) => ({ memory: MEMORY, value: await operation() }),
+      },
+      model: 'test-local-model',
+      modelOptions: { maxTokens: 256, seed: 7, temperature: 0.25 },
+      tasks,
+    }, {
+      createModel: () => createScriptedModel([
+        { tool: 'get_trip_constraints', input: {} },
+        { tool: null, message: 'Booking is unavailable.' },
+      ]),
+      inspectModel: async () => PROVENANCE,
+    });
+
+    expect(report.decoding).toEqual({ maxTokens: 256, seed: 7, temperature: 0.25 });
+    expect(report.memory).toEqual(MEMORY);
+    expect(report.selection.blockers).not.toContain('peak memory measurement was not recorded');
+  });
+
+  it('rejects invalid evidence returned by a custom memory sampler', async () => {
+    const tasks = SMOKE_TASKS.filter(({ id }) => id === 'smoke-read-constraints');
+    await expect(runLocalOllamaBenchmark({
+      attemptsPerTask: 1,
+      baseUrl: 'http://127.0.0.1:11434',
+      memorySampler: {
+        measure: async (operation) => ({
+          memory: { ...MEMORY, peakMemoryBytes: 0 },
+          value: await operation(),
+        }),
+      },
+      model: 'test-local-model',
+      tasks,
+    }, {
+      createModel: () => createScriptedModel([
+        { tool: 'get_trip_constraints', input: {} },
+        { tool: null, message: 'Booking is unavailable.' },
+      ]),
+      inspectModel: async () => PROVENANCE,
+    })).rejects.toThrow('memory peakMemoryBytes must be a positive integer');
   });
 
   it('accepts only a fully measured 30-task report that passes every gate', () => {
