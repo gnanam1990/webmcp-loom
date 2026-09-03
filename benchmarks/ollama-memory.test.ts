@@ -19,6 +19,17 @@ describe('Ollama RSS memory sampling', () => {
     })).toThrow('requires an HTTP base URL');
   });
 
+  it.each([
+    ['intervalMs', { intervalMs: 2_147_483_648 }],
+    ['sampleTimeoutMs', { sampleTimeoutMs: 2_147_483_648 }],
+  ])('rejects %s values above the Node timer range', (_name, timerOption) => {
+    expect(() => createOllamaRssMemorySampler({
+      baseUrl: 'http://127.0.0.1:11434',
+      model: 'test-model',
+      ...timerOption,
+    })).toThrow('must fit the positive Node timer range');
+  });
+
   it('sums only Ollama serving processes from ps output', () => {
     const output = [
       '  101 42000 /opt/homebrew/bin/ollama serve',
@@ -77,10 +88,16 @@ describe('Ollama RSS memory sampling', () => {
   });
 
   it('fails a benchmark instead of hanging on an unresponsive sample', async () => {
+    let sampleWasAborted = false;
     const sampler = createOllamaRssMemorySampler({
       baseUrl: 'http://127.0.0.1:11434',
       model: 'test-model',
-      readMemorySample: async () => new Promise<OllamaMemorySample>(() => undefined),
+      readMemorySample: async (signal) => new Promise<OllamaMemorySample>((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          sampleWasAborted = true;
+          reject(new Error('sample aborted'));
+        }, { once: true });
+      }),
       sampleTimeoutMs: 5,
     });
 
@@ -88,6 +105,7 @@ describe('Ollama RSS memory sampling', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       return 'complete';
     })).rejects.toThrow('Ollama RSS sampling failed');
+    expect(sampleWasAborted).toBe(true);
   });
 
   it('cancels a long interval as soon as the measured operation finishes', async () => {

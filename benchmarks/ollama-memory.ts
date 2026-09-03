@@ -4,12 +4,13 @@ import { promisify } from 'node:util';
 import type { LocalBenchmarkMemoryMeasurement, LocalBenchmarkMemorySampler } from './local-ollama.js';
 
 const execFileAsync = promisify(execFile);
+const MAX_TIMER_MILLISECONDS = 2_147_483_647;
 
 export interface OllamaRssMemorySamplerOptions {
   baseUrl: string;
   intervalMs?: number;
   model: string;
-  readMemorySample?: () => Promise<OllamaMemorySample>;
+  readMemorySample?: (signal: AbortSignal) => Promise<OllamaMemorySample>;
   sampleTimeoutMs?: number;
 }
 
@@ -28,18 +29,18 @@ export function createOllamaRssMemorySampler(
 ): LocalBenchmarkMemorySampler {
   const intervalMs = options.intervalMs ?? 100;
   const sampleTimeoutMs = options.sampleTimeoutMs ?? 2_000;
-  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) {
-    throw new Error('Ollama memory sampling interval must be a positive integer.');
+  if (!isValidTimerMilliseconds(intervalMs)) {
+    throw new Error('Ollama memory sampling interval must fit the positive Node timer range.');
   }
-  if (!Number.isSafeInteger(sampleTimeoutMs) || sampleTimeoutMs <= 0) {
-    throw new Error('Ollama memory sample timeout must be a positive integer.');
+  if (!isValidTimerMilliseconds(sampleTimeoutMs)) {
+    throw new Error('Ollama memory sample timeout must fit the positive Node timer range.');
   }
   if (!options.baseUrl.trim() || !options.model.trim()) {
     throw new Error('Ollama memory sampling needs a base URL and model.');
   }
   assertLoopbackBaseUrl(options.baseUrl);
   const readMemorySample = options.readMemorySample
-    ?? (() => readOllamaMemorySample(options.baseUrl, options.model, sampleTimeoutMs));
+    ?? ((signal) => readOllamaMemorySample(options.baseUrl, options.model, sampleTimeoutMs, signal));
   return {
     async measure<T>(operation: () => Promise<T>) {
       let active = true;
@@ -50,7 +51,7 @@ export function createOllamaRssMemorySampler(
       const sampling = (async () => {
         while (active) {
           try {
-            const sample = await withTimeout(readMemorySample(), sampleTimeoutMs);
+            const sample = await withTimeout(readMemorySample, sampleTimeoutMs);
             validateSample(sample);
             peakMemoryBytes = Math.max(
               peakMemoryBytes,
@@ -88,6 +89,10 @@ export function createOllamaRssMemorySampler(
       return { memory, value };
     },
   };
+}
+
+function isValidTimerMilliseconds(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0 && value <= MAX_TIMER_MILLISECONDS;
 }
 
 function assertLoopbackBaseUrl(baseUrl: string): void {
@@ -139,15 +144,17 @@ async function readOllamaMemorySample(
   baseUrl: string,
   model: string,
   timeoutMs: number,
+  signal: AbortSignal,
 ): Promise<OllamaMemorySample> {
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '').replace(/\/api$/, '');
   const [{ stdout }, processResponse] = await Promise.all([
     execFileAsync('ps', ['-axo', 'pid=,rss=,command='], {
       encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
+      signal,
       timeout: timeoutMs,
     }),
-    fetch(`${normalizedBaseUrl}/api/ps`, { signal: AbortSignal.timeout(timeoutMs) }),
+    fetch(`${normalizedBaseUrl}/api/ps`, { signal }),
   ]);
   if (!processResponse.ok) {
     throw new Error(`Ollama process inventory returned HTTP ${processResponse.status}.`);
@@ -181,14 +188,22 @@ async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+async function withTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error('Ollama memory sample timed out.')), timeoutMs);
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error('Ollama memory sample timed out.'));
+    }, timeoutMs);
   });
   try {
-    return await Promise.race([operation, timeout]);
+    return await Promise.race([operation(controller.signal), timeout]);
   } finally {
+    controller.abort();
     if (timer !== undefined) clearTimeout(timer);
   }
 }
