@@ -24,6 +24,11 @@ const BUSY: readonly SessionSnapshot['status'][] = ['running', 'awaiting_approva
  */
 export type WebMcpStatus = 'registered' | 'unsupported' | 'failed';
 
+/** Cloud use changes the privacy boundary, so the active indicator says so visibly. */
+export function backendDisclosure(kind: SessionSnapshot['backend']['backend']['kind']): string | null {
+  return kind === 'cloud' ? 'Prompts sent to configured HTTPS endpoint' : null;
+}
+
 /** How long a change stays marked before the cue fades on its own. */
 const HIGHLIGHT_MILLISECONDS = 2_600;
 
@@ -195,6 +200,7 @@ function Backend({ state, webmcp }: {
     : webmcp === 'failed'
       ? 'WebMCP registration failed'
       : 'WebMCP unavailable in this browser';
+  const disclosure = backendDisclosure(state.backend.kind);
 
   return (
     <p className="backend" aria-live="polite">
@@ -208,6 +214,9 @@ function Backend({ state, webmcp }: {
       </span>
       <span className="backend__sep" aria-hidden="true">·</span>
       <span className={`backend__webmcp is-${webmcp}`}>{webmcpLabel}</span>
+      {disclosure !== null && (
+        <span className="backend__disclosure">{disclosure}</span>
+      )}
     </p>
   );
 }

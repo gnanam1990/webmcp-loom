@@ -13,6 +13,7 @@ The deterministic Japan travel domain, collaborative application, shared state, 
 - one application factory that hands the same store and tool array to the in-app runtime and document WebMCP registration;
 - undo, a visible execution-backend indicator, and application-native highlights;
 - an opt-in WebGPU/WebLLM backend loader with visible progress, clear failure and retry states;
+- an explicit host-configured cloud backend seam with no browser credential form or default network call;
 - a versioned deterministic retrieval profile that limits each model prompt to at most four relevant tools;
 - deterministic domain, collaboration, accessibility-helper and WebMCP integration tests.
 
@@ -101,6 +102,31 @@ the requested model assets through `@mlc-ai/web-llm`; the browser may cache
 those assets for later loads. The interface reports loading progress, prevents
 runs until the backend is ready, and offers a retry after a clear load failure.
 It never falls back to a proprietary inference service.
+
+## Host-configured cloud backend
+
+`createTravelCloudBackend()` connects the application to the provider-neutral,
+OpenAI-compatible adapter. It is deliberately not selected by a query string,
+environment variable embedded into the client bundle, or credential form. A
+trusted host must provide the exact query-free HTTPS endpoint, model id, and a
+credential-header resolver, then pass the returned options into
+`createTravelApplication()`.
+
+```ts
+const cloud = createTravelCloudBackend({
+  endpoint: trustedConfiguration.endpoint,
+  model: trustedConfiguration.model,
+  label: 'Cloud · Team gateway',
+  resolveCredentialHeaders: trustedConfiguration.resolveCredentialHeaders,
+});
+const application = createTravelApplication(undefined, cloud);
+```
+
+The adapter invokes the resolver for every request and does not retain returned
+credential headers. The visible backend indicator discloses that prompts leave
+the browser for the configured endpoint. Tool selection, schema validation,
+write approval, stale-state protection and the no-booking boundary remain in
+the shared runtime. The default production build still makes no cloud request.
 
 Loading successfully proves only adapter and browser compatibility. Model
 selection still requires the complete deterministic corpus, repeated attempts,

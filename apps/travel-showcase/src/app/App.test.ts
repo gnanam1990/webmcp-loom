@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { createSession } from './session.js';
-import { budgetMeterLabel, formatDay, projectApprovalBudget, traceAnnouncement } from './App.js';
+import {
+  budgetMeterLabel,
+  backendDisclosure,
+  formatDay,
+  projectApprovalBudget,
+  traceAnnouncement,
+} from './App.js';
 import type { SessionSnapshot } from './session.js';
 
 describe('travel application presentation helpers', () => {
+  it('discloses cloud prompt transport without mislabelling local or scripted inference', () => {
+    expect(backendDisclosure('cloud')).toBe('Prompts sent to configured HTTPS endpoint');
+    expect(backendDisclosure('local')).toBeNull();
+    expect(backendDisclosure('scripted')).toBeNull();
+  });
+
   it('preserves Japan calendar dates independently of the viewer timezone', () => {
     expect(formatDay('2026-11-05')).toBe('Thu 5 Nov');
   });
