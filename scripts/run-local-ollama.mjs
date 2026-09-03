@@ -80,6 +80,7 @@ function required(name) {
 function integerEnv(name, fallback, minimum = 1) {
   const value = process.env[name];
   if (value === undefined) return fallback;
+  if (!value.trim()) throw new Error(`${name} must not be empty.`);
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < minimum) {
     const range = minimum === 0 ? 'a non-negative safe integer' : 'a positive safe integer';

@@ -51,7 +51,7 @@ export function createOllamaRssMemorySampler(
       const sampling = (async () => {
         while (active) {
           try {
-            const sample = await withTimeout(readMemorySample, sampleTimeoutMs);
+            const sample = await withTimeout(readMemorySample, sampleTimeoutMs, shutdown.signal);
             validateSample(sample);
             peakMemoryBytes = Math.max(
               peakMemoryBytes,
@@ -59,6 +59,7 @@ export function createOllamaRssMemorySampler(
             );
             sampleCount += 1;
           } catch (error) {
+            if (shutdown.signal.aborted) break;
             samplingError = error;
             active = false;
             break;
@@ -191,19 +192,30 @@ async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
 async function withTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
+  shutdownSignal: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel: (() => void) | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       controller.abort();
       reject(new Error('Ollama memory sample timed out.'));
     }, timeoutMs);
   });
+  const shutdown = new Promise<never>((_resolve, reject) => {
+    cancel = () => {
+      controller.abort();
+      reject(new Error('Ollama memory sampling stopped.'));
+    };
+    if (shutdownSignal.aborted) cancel();
+    else shutdownSignal.addEventListener('abort', cancel, { once: true });
+  });
   try {
-    return await Promise.race([operation(controller.signal), timeout]);
+    return await Promise.race([operation(controller.signal), timeout, shutdown]);
   } finally {
     controller.abort();
     if (timer !== undefined) clearTimeout(timer);
+    if (cancel !== undefined) shutdownSignal.removeEventListener('abort', cancel);
   }
 }

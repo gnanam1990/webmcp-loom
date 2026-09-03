@@ -121,4 +121,39 @@ describe('Ollama RSS memory sampling', () => {
 
     expect(performance.now() - startedAt).toBeLessThan(250);
   });
+
+  it('cancels an in-flight sample as soon as the measured operation finishes', async () => {
+    let sampleCount = 0;
+    let sampleWasAborted = false;
+    let notifySecondSample: (() => void) | undefined;
+    const secondSampleStarted = new Promise<void>((resolve) => {
+      notifySecondSample = resolve;
+    });
+    const sampler = createOllamaRssMemorySampler({
+      baseUrl: 'http://127.0.0.1:11434',
+      intervalMs: 1,
+      model: 'test-model',
+      readMemorySample: async (signal) => {
+        sampleCount += 1;
+        if (sampleCount === 1) return { rssKilobytes: 100, vramBytes: 0 };
+        notifySecondSample?.();
+        return new Promise<OllamaMemorySample>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            sampleWasAborted = true;
+            reject(new Error('sample aborted'));
+          }, { once: true });
+        });
+      },
+      sampleTimeoutMs: 10_000,
+    });
+    const startedAt = performance.now();
+
+    await expect(sampler.measure(async () => {
+      await secondSampleStarted;
+      return 'complete';
+    })).resolves.toMatchObject({ value: 'complete' });
+
+    expect(sampleWasAborted).toBe(true);
+    expect(performance.now() - startedAt).toBeLessThan(250);
+  });
 });
