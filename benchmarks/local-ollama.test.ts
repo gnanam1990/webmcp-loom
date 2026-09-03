@@ -125,6 +125,23 @@ describe('local Ollama benchmark assembly', () => {
     })).rejects.toThrow('memory peakMemoryBytes must be a positive integer');
   });
 
+  it.each([
+    ['maxTokens', { maxTokens: Number.MAX_SAFE_INTEGER + 1 }],
+    ['seed', { seed: Number.MAX_SAFE_INTEGER + 1 }],
+  ])('rejects an unsafe %s before it can be recorded as exact evidence', async (_name, modelOptions) => {
+    const tasks = SMOKE_TASKS.filter(({ id }) => id === 'smoke-read-constraints');
+    await expect(runLocalOllamaBenchmark({
+      attemptsPerTask: 1,
+      baseUrl: 'http://127.0.0.1:11434',
+      model: 'test-local-model',
+      modelOptions,
+      tasks,
+    }, {
+      createModel: () => createScriptedModel([]),
+      inspectModel: async () => PROVENANCE,
+    })).rejects.toThrow(`modelOptions ${_name}`);
+  });
+
   it('accepts only a fully measured 30-task report that passes every gate', () => {
     const result = successfulResult(40);
     const report: BenchmarkBatchReport = {

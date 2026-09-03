@@ -210,7 +210,7 @@ function percentile95(values: readonly number[]): number {
 function validateOptions(options: LocalOllamaBenchmarkOptions): void {
   if (!options.baseUrl.trim()) throw new Error('Ollama baseUrl is required.');
   if (!options.model.trim()) throw new Error('Ollama model is required.');
-  if (!Number.isInteger(options.attemptsPerTask) || options.attemptsPerTask < 1) {
+  if (!Number.isSafeInteger(options.attemptsPerTask) || options.attemptsPerTask < 1) {
     throw new Error('attemptsPerTask must be a positive integer.');
   }
   if (options.tasks.length === 0) throw new Error('At least one benchmark task is required.');
@@ -229,10 +229,10 @@ function validateDecoding(
   decoding: Omit<OllamaRuntimeModelOptions, 'baseUrl' | 'model'> | undefined,
 ): void {
   if (decoding?.maxTokens !== undefined
-    && (!Number.isInteger(decoding.maxTokens) || decoding.maxTokens <= 0)) {
+    && (!Number.isSafeInteger(decoding.maxTokens) || decoding.maxTokens <= 0)) {
     throw new Error('modelOptions maxTokens must be a positive integer.');
   }
-  if (decoding?.seed !== undefined && !Number.isInteger(decoding.seed)) {
+  if (decoding?.seed !== undefined && !Number.isSafeInteger(decoding.seed)) {
     throw new Error('modelOptions seed must be an integer.');
   }
   if (decoding?.temperature !== undefined
@@ -249,7 +249,7 @@ function validateHardware(hardware: LocalBenchmarkHardwareProfile | undefined): 
   if (!Number.isFinite(hardware.latencyBudgetMs) || hardware.latencyBudgetMs <= 0) {
     throw new Error('hardware latencyBudgetMs must be positive.');
   }
-  if (!Number.isInteger(hardware.memoryBudgetBytes) || hardware.memoryBudgetBytes <= 0) {
+  if (!Number.isSafeInteger(hardware.memoryBudgetBytes) || hardware.memoryBudgetBytes <= 0) {
     throw new Error('hardware memoryBudgetBytes must be a positive integer.');
   }
 }
@@ -257,10 +257,10 @@ function validateHardware(hardware: LocalBenchmarkHardwareProfile | undefined): 
 function validateMemory(memory: LocalBenchmarkMemoryMeasurement | undefined): void {
   if (memory === undefined) return;
   if (!memory.method.trim()) throw new Error('memory measurement needs a method.');
-  if (!Number.isInteger(memory.peakMemoryBytes) || memory.peakMemoryBytes <= 0) {
+  if (!Number.isSafeInteger(memory.peakMemoryBytes) || memory.peakMemoryBytes <= 0) {
     throw new Error('memory peakMemoryBytes must be a positive integer.');
   }
-  if (!Number.isInteger(memory.samplingIntervalMs) || memory.samplingIntervalMs <= 0) {
+  if (!Number.isSafeInteger(memory.samplingIntervalMs) || memory.samplingIntervalMs <= 0) {
     throw new Error('memory samplingIntervalMs must be a positive integer.');
   }
 }

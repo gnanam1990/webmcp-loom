@@ -28,10 +28,10 @@ export function createOllamaRssMemorySampler(
 ): LocalBenchmarkMemorySampler {
   const intervalMs = options.intervalMs ?? 100;
   const sampleTimeoutMs = options.sampleTimeoutMs ?? 2_000;
-  if (!Number.isInteger(intervalMs) || intervalMs <= 0) {
+  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) {
     throw new Error('Ollama memory sampling interval must be a positive integer.');
   }
-  if (!Number.isInteger(sampleTimeoutMs) || sampleTimeoutMs <= 0) {
+  if (!Number.isSafeInteger(sampleTimeoutMs) || sampleTimeoutMs <= 0) {
     throw new Error('Ollama memory sample timeout must be a positive integer.');
   }
   if (!options.baseUrl.trim() || !options.model.trim()) {
@@ -43,6 +43,7 @@ export function createOllamaRssMemorySampler(
   return {
     async measure<T>(operation: () => Promise<T>) {
       let active = true;
+      const shutdown = new AbortController();
       let peakMemoryBytes = 0;
       let sampleCount = 0;
       let samplingError: unknown;
@@ -61,7 +62,7 @@ export function createOllamaRssMemorySampler(
             active = false;
             break;
           }
-          await delay(intervalMs);
+          await delay(intervalMs, shutdown.signal);
         }
       })();
 
@@ -70,6 +71,7 @@ export function createOllamaRssMemorySampler(
         value = await operation();
       } finally {
         active = false;
+        shutdown.abort();
         await sampling;
       }
       if (samplingError !== undefined) {
@@ -166,8 +168,17 @@ function validateSample(sample: OllamaMemorySample): void {
   }
 }
 
-async function delay(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+async function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, milliseconds);
+    signal.addEventListener('abort', done, { once: true });
+  });
 }
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {

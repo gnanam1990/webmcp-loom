@@ -89,4 +89,18 @@ describe('Ollama RSS memory sampling', () => {
       return 'complete';
     })).rejects.toThrow('Ollama RSS sampling failed');
   });
+
+  it('cancels a long interval as soon as the measured operation finishes', async () => {
+    const sampler = createOllamaRssMemorySampler({
+      baseUrl: 'http://127.0.0.1:11434',
+      intervalMs: 10_000,
+      model: 'test-model',
+      readMemorySample: async () => ({ rssKilobytes: 100, vramBytes: 0 }),
+    });
+    const startedAt = performance.now();
+
+    await expect(sampler.measure(async () => 'complete')).resolves.toMatchObject({ value: 'complete' });
+
+    expect(performance.now() - startedAt).toBeLessThan(250);
+  });
 });

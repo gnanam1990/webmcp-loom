@@ -73,7 +73,8 @@ provenance. Historical v1 reports remain readable and are not retroactively
 attributed to this profile.
 
 That probe is explicitly exploratory. A report is selection-eligible only if
-it runs all 30 tasks three times and supplies both JSON objects below:
+it runs all 30 tasks three times, supplies the hardware object below, and uses
+either automatic loopback memory sampling or the optional manual memory object:
 
 ```text
 WEBMCP_BENCHMARK_HARDWARE_JSON={"name":"...","architecture":"...","operatingSystem":"...","latencyBudgetMs":...,"memoryBudgetBytes":...}

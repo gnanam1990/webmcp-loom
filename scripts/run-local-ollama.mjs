@@ -36,7 +36,7 @@ const report = await runLocalOllamaBenchmark({
   model,
   modelOptions: {
     maxTokens: integerEnv('WEBMCP_OLLAMA_MAX_TOKENS', 128),
-    seed: integerEnv('WEBMCP_OLLAMA_SEED', 42),
+    seed: integerEnv('WEBMCP_OLLAMA_SEED', 42, 0),
     temperature: numberEnv('WEBMCP_OLLAMA_TEMPERATURE', 0),
   },
   retrieval: {
@@ -77,11 +77,14 @@ function required(name) {
   return value;
 }
 
-function integerEnv(name, fallback) {
+function integerEnv(name, fallback, minimum = 1) {
   const value = process.env[name];
   if (value === undefined) return fallback;
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${name} must be a positive integer.`);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    const range = minimum === 0 ? 'a non-negative safe integer' : 'a positive safe integer';
+    throw new Error(`${name} must be ${range}.`);
+  }
   return parsed;
 }
 
