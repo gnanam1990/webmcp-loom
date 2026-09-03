@@ -122,5 +122,22 @@ describe('travel cloud backend integration', () => {
     expect(() => create('   ')).toThrow('must not be empty');
     expect(() => create('Cloud\nspoofed status')).toThrow('must be plain text');
     expect(() => create('x'.repeat(81))).toThrow('no longer than 80');
+    expect(() => create(`Cloud${String.fromCodePoint(0x202e)}spoofed status`))
+      .toThrow('must be plain text');
+    expect(() => create(`Cloud${String.fromCodePoint(0x2066)}spoofed status`))
+      .toThrow('must be plain text');
+  });
+
+  it('counts visible astral Unicode as code points for the label limit', () => {
+    const create = (label: string) => createTravelCloudBackend({
+      endpoint: 'https://models.example.test/v1/chat/completions',
+      model: 'team-model',
+      label,
+      resolveCredentialHeaders: () => ({}),
+      fetch: vi.fn(),
+    });
+
+    expect(create('🚀'.repeat(80)).backend.backend.label).toBe('🚀'.repeat(80));
+    expect(() => create('🚀'.repeat(81))).toThrow('no longer than 80');
   });
 });

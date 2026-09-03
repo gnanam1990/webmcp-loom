@@ -50,11 +50,18 @@ function normalizeLabel(value: string | undefined): string {
   if (value === undefined) return DEFAULT_LABEL;
   const label = value.trim();
   if (!label) throw new Error('Cloud backend label must not be empty.');
-  const hasControlCharacter = [...label].some((character) => {
+  const characters = [...label];
+  const hasUnsafeControl = characters.some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint < 32 || codePoint === 127;
+    return codePoint < 32
+      || codePoint === 127
+      || codePoint === 0x061c
+      || codePoint === 0x200e
+      || codePoint === 0x200f
+      || (codePoint >= 0x202a && codePoint <= 0x202e)
+      || (codePoint >= 0x2066 && codePoint <= 0x2069);
   });
-  if (label.length > MAX_LABEL_CHARACTERS || hasControlCharacter) {
+  if (characters.length > MAX_LABEL_CHARACTERS || hasUnsafeControl) {
     throw new Error(`Cloud backend label must be plain text no longer than ${MAX_LABEL_CHARACTERS} characters.`);
   }
   return label;
