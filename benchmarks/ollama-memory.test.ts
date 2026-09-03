@@ -5,6 +5,7 @@ import {
   parseOllamaRssKilobytes,
   parseOllamaVramBytes,
 } from './ollama-memory.js';
+import type { OllamaMemorySample } from './ollama-memory.js';
 
 describe('Ollama RSS memory sampling', () => {
   it('rejects automatic sampling for a non-local Ollama server', () => {
@@ -12,6 +13,10 @@ describe('Ollama RSS memory sampling', () => {
       baseUrl: 'https://ollama.example.com',
       model: 'test-model',
     })).toThrow('requires a loopback base URL');
+    expect(() => createOllamaRssMemorySampler({
+      baseUrl: 'file://localhost/tmp/ollama',
+      model: 'test-model',
+    })).toThrow('requires an HTTP base URL');
   });
 
   it('sums only Ollama serving processes from ps output', () => {
@@ -69,5 +74,19 @@ describe('Ollama RSS memory sampling', () => {
       },
       value: 'complete',
     });
+  });
+
+  it('fails a benchmark instead of hanging on an unresponsive sample', async () => {
+    const sampler = createOllamaRssMemorySampler({
+      baseUrl: 'http://127.0.0.1:11434',
+      model: 'test-model',
+      readMemorySample: async () => new Promise<OllamaMemorySample>(() => undefined),
+      sampleTimeoutMs: 5,
+    });
+
+    await expect(sampler.measure(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return 'complete';
+    })).rejects.toThrow('Ollama RSS sampling failed');
   });
 });

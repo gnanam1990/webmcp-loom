@@ -10,6 +10,7 @@ export interface OllamaRssMemorySamplerOptions {
   intervalMs?: number;
   model: string;
   readMemorySample?: () => Promise<OllamaMemorySample>;
+  sampleTimeoutMs?: number;
 }
 
 export interface OllamaMemorySample {
@@ -26,15 +27,19 @@ export function createOllamaRssMemorySampler(
   options: OllamaRssMemorySamplerOptions,
 ): LocalBenchmarkMemorySampler {
   const intervalMs = options.intervalMs ?? 100;
+  const sampleTimeoutMs = options.sampleTimeoutMs ?? 2_000;
   if (!Number.isInteger(intervalMs) || intervalMs <= 0) {
     throw new Error('Ollama memory sampling interval must be a positive integer.');
+  }
+  if (!Number.isInteger(sampleTimeoutMs) || sampleTimeoutMs <= 0) {
+    throw new Error('Ollama memory sample timeout must be a positive integer.');
   }
   if (!options.baseUrl.trim() || !options.model.trim()) {
     throw new Error('Ollama memory sampling needs a base URL and model.');
   }
   assertLoopbackBaseUrl(options.baseUrl);
   const readMemorySample = options.readMemorySample
-    ?? (() => readOllamaMemorySample(options.baseUrl, options.model));
+    ?? (() => readOllamaMemorySample(options.baseUrl, options.model, sampleTimeoutMs));
   return {
     async measure<T>(operation: () => Promise<T>) {
       let active = true;
@@ -44,7 +49,7 @@ export function createOllamaRssMemorySampler(
       const sampling = (async () => {
         while (active) {
           try {
-            const sample = await readMemorySample();
+            const sample = await withTimeout(readMemorySample(), sampleTimeoutMs);
             validateSample(sample);
             peakMemoryBytes = Math.max(
               peakMemoryBytes,
@@ -90,6 +95,9 @@ function assertLoopbackBaseUrl(baseUrl: string): void {
   } catch (error) {
     throw new Error('Ollama memory sampling base URL is invalid.', { cause: error });
   }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Ollama memory sampling requires an HTTP base URL.');
+  }
   if (!['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
     throw new Error('Automatic Ollama process sampling requires a loopback base URL.');
   }
@@ -125,14 +133,19 @@ export function parseOllamaRssKilobytes(output: string): number {
   }, 0);
 }
 
-async function readOllamaMemorySample(baseUrl: string, model: string): Promise<OllamaMemorySample> {
+async function readOllamaMemorySample(
+  baseUrl: string,
+  model: string,
+  timeoutMs: number,
+): Promise<OllamaMemorySample> {
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '').replace(/\/api$/, '');
   const [{ stdout }, processResponse] = await Promise.all([
     execFileAsync('ps', ['-axo', 'pid=,rss=,command='], {
       encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
+      timeout: timeoutMs,
     }),
-    fetch(`${normalizedBaseUrl}/api/ps`),
+    fetch(`${normalizedBaseUrl}/api/ps`, { signal: AbortSignal.timeout(timeoutMs) }),
   ]);
   if (!processResponse.ok) {
     throw new Error(`Ollama process inventory returned HTTP ${processResponse.status}.`);
@@ -155,4 +168,16 @@ function validateSample(sample: OllamaMemorySample): void {
 
 async function delay(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('Ollama memory sample timed out.')), timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
