@@ -420,6 +420,11 @@ h2 { font-size: 1.05rem; }
 .backend__sep { color: var(--ink-faint); }
 .backend__webmcp.is-registered { color: var(--accent); }
 .backend__webmcp.is-failed { color: var(--over); }
+.backend__disclosure {
+  flex-basis: 100%;
+  padding-left: 16px;
+  color: var(--ink-faint);
+}
 
 /* Highlights ------------------------------------------------------------- */
 
